@@ -1,0 +1,67 @@
+using System;
+using UnityEditor;
+using UnityEngine;
+
+namespace CsvPipeline
+{
+    /// <summary>
+    /// 관리 대상 CSV를 강제 재임포트해 모든 CSV → ScriptableObject 파이프라인을 일괄 재생성하는 메뉴입니다.
+    /// AssetPostprocessor 임포터는 CSV가 "변경"될 때만 발화하므로, 파이프라인 수정 후 산출물 동일성 검증이나
+    /// 최초 시드 CSV의 일괄 생성에 사용합니다.
+    /// </summary>
+    public static class CsvRebuildMenu
+    {
+        /// <summary>로그 접두 태그입니다.</summary>
+        private const string TAG = "[CsvRebuild]";
+
+        /// <summary>CSV 루트의 모든 CSV를 강제 재임포트합니다.</summary>
+        [MenuItem("Tools/CSV Pipeline/Rebuild All Data")]
+        public static void RebuildAllMenu()
+        {
+            int count = RebuildAll();
+            if (count < 0) return;
+
+            Debug.Log($"{TAG} {count}개 CSV를 강제 재임포트했습니다. (Console의 임포터 로그 확인)");
+        }
+
+        /// <summary>
+        /// CSV 루트의 모든 CSV를 강제 재임포트합니다.
+        /// </summary>
+        /// <returns>재임포트한 CSV 개수이거나, 루트 폴더를 찾지 못했으면 -1입니다.</returns>
+        public static int RebuildAll()
+        {
+            string csvRoot = CsvPipelineSettings.Instance.CsvRootFolder;
+            if (!AssetDatabase.IsValidFolder(csvRoot))
+            {
+                Debug.LogWarning(
+                    $"{TAG} CSV 루트 폴더를 찾지 못했습니다: {csvRoot}\n"
+                    + "Project Settings ▸ CSV Pipeline 에서 실제 폴더를 지정하십시오.");
+                return -1;
+            }
+
+            string[] guids = AssetDatabase.FindAssets("t:TextAsset", new[] { csvRoot });
+            int count = 0;
+
+            AssetDatabase.StartAssetEditing();
+            try
+            {
+                foreach (string guid in guids)
+                {
+                    string path = AssetDatabase.GUIDToAssetPath(guid);
+                    if (!path.EndsWith(".csv", StringComparison.OrdinalIgnoreCase)) continue;
+
+                    // ForceUpdate 재임포트 → 각 임포터의 OnPostprocessAllAssets가 이 경로를 처리
+                    AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate);
+                    count++;
+                }
+            }
+            finally
+            {
+                AssetDatabase.StopAssetEditing();
+            }
+
+            AssetDatabase.Refresh();
+            return count;
+        }
+    }
+}

@@ -1,0 +1,85 @@
+using System.Collections.Generic;
+using UnityEditor;
+using UnityEngine;
+
+namespace CsvPipeline
+{
+    /// <summary>
+    /// <b>표 전체 = 프로젝트에 하나뿐인 에셋</b> 임포터입니다. (등급표·밸런싱 표처럼 산출물이 단일 에셋인 경우)
+    /// 에셋을 새로 만들지 않습니다. 새로 만들면 GUID가 다른 빈 에셋이 생기고,
+    /// 씬·프리팹의 인스펙터 배선은 옛 에셋을 계속 가리켜 조용히 어긋나기 때문입니다.
+    /// </summary>
+    /// <typeparam name="T">갱신할 ScriptableObject 타입입니다.</typeparam>
+    public abstract class CsvSingletonImporter<T> : CsvImportDefinition where T : ScriptableObject
+    {
+        /// <summary>대상 에셋 조회에 쓰는 AssetDatabase 검색 필터입니다.</summary>
+        protected virtual string TypeFilter => $"t:{typeof(T).Name}";
+
+        /// <summary>대상 에셋이 없을 때 경고에 덧붙일 안내입니다. (어디서 만들 수 있는지)</summary>
+        protected virtual string MissingAssetHint => null;
+
+        /// <summary>
+        /// 한 행의 값을 단일 에셋에 기록합니다.
+        /// </summary>
+        /// <param name="row">읽을 행입니다.</param>
+        /// <param name="asset">대상 에셋입니다.</param>
+        /// <param name="serialized">대상 에셋의 직렬화 객체입니다. 전 행 처리 후 한 번에 적용됩니다.</param>
+        /// <returns>이 행을 실제로 반영했으면 true입니다. (로그의 적용 행 수 집계용)</returns>
+        protected abstract bool BakeRow(CsvRow row, T asset, SerializedObject serialized);
+
+        /// <summary>단일 에셋을 찾아 전 행을 반영합니다.</summary>
+        /// <param name="rows">파싱된 CSV 행들입니다.</param>
+        /// <returns>에셋을 건드렸으면 true입니다.</returns>
+        protected override bool Process(IReadOnlyList<CsvRow> rows)
+        {
+            T asset = FindSingle();
+            if (asset == null) return false;
+
+            var serialized = new SerializedObject(asset);
+            int applied = 0;
+
+            foreach (CsvRow row in rows)
+            {
+                if (BakeRow(row, asset, serialized)) applied++;
+            }
+
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            EditorUtility.SetDirty(asset);
+
+            Debug.Log($"{LogTag} {typeof(T).Name}를 갱신했습니다. (적용 {applied}행)");
+            return true;
+        }
+
+        /// <summary>프로젝트에서 대상 에셋 하나를 찾습니다. 없거나 여럿이면 경고 후 처리하지 않습니다.</summary>
+        /// <returns>찾은 에셋이거나 null입니다.</returns>
+        private T FindSingle()
+        {
+            string[] guids = AssetDatabase.FindAssets(TypeFilter);
+            var found = new List<T>();
+
+            foreach (string guid in guids)
+            {
+                var asset = AssetDatabase.LoadAssetAtPath<T>(AssetDatabase.GUIDToAssetPath(guid));
+                if (asset != null) found.Add(asset);
+            }
+
+            if (found.Count == 1) return found[0];
+
+            string hint = MissingAssetHint;
+            if (found.Count == 0)
+            {
+                Debug.LogWarning(
+                    $"{LogTag} {typeof(T).Name} 에셋을 찾지 못해 표를 반영하지 못했습니다.\n"
+                    + "이 표의 산출물은 프로젝트에 하나뿐인 에셋이라 임포터가 새로 만들지 않습니다."
+                    + (string.IsNullOrEmpty(hint) ? string.Empty : $" {hint}"));
+                return null;
+            }
+
+            // 여럿이면 어느 쪽을 갱신해도 나머지가 낡은 값으로 남아, 배선에 따라 결과가 갈립니다.
+            Debug.LogWarning(
+                $"{LogTag} {typeof(T).Name} 에셋이 {found.Count}개라 어느 것을 갱신할지 정할 수 없습니다.\n"
+                + "하나만 남기고 정리한 뒤 다시 임포트하십시오.");
+            return null;
+        }
+    }
+}

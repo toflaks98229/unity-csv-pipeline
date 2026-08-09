@@ -1,0 +1,16 @@
+{
+    "name": "CsvPipeline.Editor",
+    "rootNamespace": "CsvPipeline",
+    "references": [],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "autoReferenced": true,
+    "precompiledReferences": [],
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -1,0 +1,79 @@
+using System.Collections.Generic;
+using UnityEditor;
+using UnityEngine;
+
+namespace CsvPipeline
+{
+    /// <summary>
+    /// <b>같은 식별자를 가진 여러 행 = 한 에셋</b> 임포터입니다. (표의 한 행이 에셋 안의 리스트 항목 하나인 경우)
+    /// 그룹은 CSV에 처음 등장한 순서를 지킵니다.
+    /// </summary>
+    /// <typeparam name="T">구울 ScriptableObject 타입입니다.</typeparam>
+    public abstract class CsvGroupImporter<T> : CsvImportDefinition where T : ScriptableObject
+    {
+        /// <summary>산출물이 놓이는 폴더입니다.</summary>
+        protected abstract override string OutputFolder { get; }
+
+        /// <summary>행에서 그룹 식별자(=파일명)를 뽑습니다. 비어 있으면 그 행을 건너뜁니다.</summary>
+        /// <param name="row">읽을 행입니다.</param>
+        /// <returns>그룹 식별자입니다.</returns>
+        protected abstract string GetGroupId(CsvRow row);
+
+        /// <summary>
+        /// 한 그룹의 행들을 에셋에 기록합니다.
+        /// <b>여기서는 에셋 필드에 직접 대입하십시오.</b> (<see cref="SerializedObject"/>를 쓰지 않는 경로입니다)
+        /// </summary>
+        /// <param name="groupId">그룹 식별자입니다.</param>
+        /// <param name="rows">이 그룹에 속한 행들입니다. CSV 순서를 지킵니다.</param>
+        /// <param name="asset">대상 에셋입니다.</param>
+        protected abstract void Bake(string groupId, IReadOnlyList<CsvRow> rows, T asset);
+
+        /// <summary>산출물 정리에 쓰는 AssetDatabase 검색 필터입니다.</summary>
+        protected virtual string TypeFilter => $"t:{typeof(T).Name}";
+
+        /// <summary>식별자로부터 에셋 경로를 만듭니다.</summary>
+        /// <param name="groupId">그룹 식별자입니다.</param>
+        /// <returns>에셋 경로입니다.</returns>
+        protected virtual string AssetPathFor(string groupId) => $"{OutputFolder}/{groupId}.asset";
+
+        /// <summary>행들을 식별자로 묶어 그룹마다 에셋을 굽고, CSV에서 사라진 산출물을 정리합니다.</summary>
+        /// <param name="rows">파싱된 CSV 행들입니다.</param>
+        /// <returns>에셋을 하나라도 건드렸으면 true입니다.</returns>
+        protected override bool Process(IReadOnlyList<CsvRow> rows)
+        {
+            string folder = OutputFolder;
+            CsvAssetPipeline.EnsureFolder(folder);
+
+            var groups = new Dictionary<string, List<CsvRow>>();
+            var order = new List<string>();
+
+            foreach (CsvRow row in rows)
+            {
+                string id = GetGroupId(row);
+                if (string.IsNullOrEmpty(id)) continue;
+
+                if (!groups.TryGetValue(id, out List<CsvRow> bucket))
+                {
+                    bucket = new List<CsvRow>();
+                    groups[id] = bucket;
+                    order.Add(id);
+                }
+                bucket.Add(row);
+            }
+
+            var validNames = new HashSet<string>();
+            foreach (string id in order)
+            {
+                T asset = CsvAssetPipeline.CreateOrLoad<T>(AssetPathFor(id));
+                if (asset == null) continue;
+
+                Bake(id, groups[id], asset);
+                EditorUtility.SetDirty(asset);
+                validNames.Add(id);
+            }
+
+            CsvAssetPipeline.ReconcileFolderByName(folder, TypeFilter, validNames, LogTag);
+            return true;
+        }
+    }
+}

@@ -1,0 +1,12 @@
+# 이 저장소는 Unity 패키지 하나만 담습니다. 소비하는 프로젝트가 만들어 내는 산출물은 넣지 않습니다.
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Ll]ogs/
+*.csproj
+*.sln
+*.user
+.vs/
+.idea/
+.DS_Store
