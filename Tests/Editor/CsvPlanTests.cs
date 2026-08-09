@@ -11,39 +11,34 @@ namespace CsvPipeline.Tests
     /// </summary>
     public sealed class CsvPlanTests
     {
-        private const string TempFolder = "Assets/CsvPipelineTests_Temp";
         private const string CsvFileName = "CsvPipelineTests_Widgets.csv";
-        private const string OutputFolder = TempFolder + "/WidgetData";
-
-        private static string CsvAssetPath => $"{TempFolder}/{CsvFileName}";
 
         private static readonly string Sample =
             "Id,Title,MaxSpeed,Stock,OwnerId,HP\n"
             + "Widget_A,첫 위젯,30,12,Player,100\n"
             + "Widget_B,둘째 위젯,7.5,3,,50\n";
 
-        /// <summary>표 하나를 임시 폴더에 놓습니다. 굽지는 않습니다.</summary>
+        /// <summary>이번 검사가 쓰는 임시 폴더입니다.</summary>
+        private string _temp;
+
+        private string CsvAssetPath => $"{_temp}/{CsvFileName}";
+        private string OutputFolder => $"{_temp}/WidgetData";
+
+        /// <summary>표 하나를 이 검사만의 임시 폴더에 놓습니다. 굽지는 않습니다.</summary>
         [SetUp]
         public void SetUp()
         {
-            Directory.CreateDirectory(Path.GetFullPath(TempFolder));
+            _temp = CsvTestFolder.Create();
             WriteCsv(Sample);
         }
 
         /// <summary>만든 것을 모두 지웁니다.</summary>
         [TearDown]
-        public void TearDown()
-        {
-            using (CsvImport.Suppress())
-            {
-                AssetDatabase.DeleteAsset(TempFolder);
-                AssetDatabase.Refresh();
-            }
-        }
+        public void TearDown() => CsvTestFolder.Delete(_temp);
 
         /// <summary>표 내용을 놓되 자동으로 굽지 않습니다.</summary>
         /// <param name="text">기록할 표 원문입니다.</param>
-        private static void WriteCsv(string text)
+        private void WriteCsv(string text)
         {
             using (CsvImport.Suppress())
             {
@@ -59,7 +54,7 @@ namespace CsvPipeline.Tests
 
         /// <summary>산출물 폴더의 에셋 개수입니다.</summary>
         /// <returns>개수입니다.</returns>
-        private static int AssetCount()
+        private int AssetCount()
             => AssetDatabase.IsValidFolder(OutputFolder)
                 ? AssetDatabase.FindAssets("t:WidgetData", new[] { OutputFolder }).Length
                 : 0;
@@ -67,8 +62,26 @@ namespace CsvPipeline.Tests
         /// <summary>구워진 에셋을 읽습니다.</summary>
         /// <param name="id">에셋 이름입니다.</param>
         /// <returns>찾은 에셋이거나 null입니다.</returns>
-        private static WidgetData Load(string id)
+        private WidgetData Load(string id)
             => AssetDatabase.LoadAssetAtPath<WidgetData>($"{OutputFolder}/{id}.asset");
+
+        /// <summary>계획을 사람이 읽을 수 있게 풀어 씁니다. 실패했을 때 원인이 바로 드러나야 합니다.</summary>
+        /// <param name="plan">풀어 쓸 계획입니다.</param>
+        /// <returns>진단 문자열입니다.</returns>
+        private static string Describe(CsvImportPlan plan)
+        {
+            var text = new StringBuilder(plan.Summary());
+            foreach (CsvPlannedChange change in plan.Changes)
+            {
+                text.Append($"\n  {change.Kind} {change.DisplayName} {change.Note}");
+                foreach (CsvFieldChange field in change.Fields)
+                {
+                    text.Append($"\n    {field.Column}({field.Field}): '{field.From}' -> '{field.To}'");
+                }
+            }
+            foreach (CsvIssue issue in plan.Issues) text.Append($"\n  ! {issue.Where} {issue.Message}");
+            return text.ToString();
+        }
 
         // ====================================================================================================
 
@@ -80,7 +93,7 @@ namespace CsvPipeline.Tests
 
             CsvImportPlan plan = Importer().Plan(CsvAssetPath);
 
-            Assert.AreEqual(2, plan.Count(CsvChangeKind.Create), plan.Summary());
+            Assert.AreEqual(2, plan.Count(CsvChangeKind.Create), Describe(plan));
             Assert.AreEqual(0, AssetCount(), "미리보기가 에셋을 만들면 안 됩니다.");
         }
 
@@ -92,9 +105,8 @@ namespace CsvPipeline.Tests
 
             CsvImportPlan plan = Importer().Plan(CsvAssetPath);
 
-            Assert.IsTrue(plan.IsNoOp, plan.Summary());
-            Assert.AreEqual(0, plan.Count(CsvChangeKind.Update),
-                            "값이 같으면 갱신으로 올리지 않아야 '무엇이 실제로 바뀌는가'가 드러납니다.");
+            Assert.IsTrue(plan.IsNoOp, Describe(plan));
+            Assert.AreEqual(0, plan.Count(CsvChangeKind.Update), Describe(plan));
         }
 
         /// <summary>값이 달라지면 어느 열이 무엇에서 무엇으로 바뀌는지까지 알려 줍니다.</summary>
@@ -108,11 +120,12 @@ namespace CsvPipeline.Tests
 
             CsvImportPlan plan = Importer().Plan(CsvAssetPath);
 
-            Assert.AreEqual(1, plan.Count(CsvChangeKind.Update), plan.Summary());
+            Assert.AreEqual(1, plan.Count(CsvChangeKind.Update), Describe(plan));
 
             CsvPlannedChange change = plan.Changes.Find(c => c.Kind == CsvChangeKind.Update);
-            Assert.AreEqual(1, change.Fields.Count, "달라진 열 하나만 올라야 합니다.");
-            Assert.AreEqual("MaxSpeed", change.Fields[0].Column);
+            Assert.AreEqual(1, change.Fields.Count, Describe(plan));
+            Assert.AreEqual("MaxSpeed", change.Fields[0].Column,
+                            "필드 이름이 아니라 표에 적힌 표기를 보여 줘야 합니다.");
             Assert.AreEqual("30", change.Fields[0].From);
             Assert.AreEqual("44", change.Fields[0].To);
 
@@ -130,7 +143,7 @@ namespace CsvPipeline.Tests
 
             CsvImportPlan plan = Importer().Plan(CsvAssetPath);
 
-            Assert.AreEqual(1, plan.Count(CsvChangeKind.Delete), plan.Summary());
+            Assert.AreEqual(1, plan.Count(CsvChangeKind.Delete), Describe(plan));
             Assert.AreEqual(2, AssetCount(), "미리보기가 에셋을 지우면 안 됩니다.");
             Assert.IsNotNull(Load("Widget_B"));
         }
@@ -145,8 +158,8 @@ namespace CsvPipeline.Tests
 
             CsvImportPlan plan = Importer().Plan(CsvAssetPath);
 
-            Assert.AreEqual(1, plan.Count(CsvChangeKind.Create), plan.Summary());
-            Assert.AreEqual(1, plan.Count(CsvChangeKind.Skip), plan.Summary());
+            Assert.AreEqual(1, plan.Count(CsvChangeKind.Create), Describe(plan));
+            Assert.AreEqual(1, plan.Count(CsvChangeKind.Skip), Describe(plan));
         }
 
         /// <summary>필수 열이 없으면 계획 자체를 세우지 않고 이유를 남깁니다.</summary>
@@ -172,8 +185,9 @@ namespace CsvPipeline.Tests
 
             CsvImportPlan plan = Importer().Plan(CsvAssetPath);
 
-            Assert.AreEqual(1, plan.Issues.Count, "실수가 아닌 값이 경고로 올라야 합니다.");
-            Assert.AreEqual("MaxSpeed", plan.Issues[0].Column);
+            Assert.AreEqual(1, plan.Issues.Count, Describe(plan));
+            Assert.AreEqual("MaxSpeed", plan.Issues[0].Column,
+                            "필드 이름이 아니라 표에 적힌 표기를 보여 줘야 합니다.");
         }
 
         /// <summary>직접 작성한 임포터도 목록에 오릅니다. (미리보기 창이 이 목록을 씁니다)</summary>

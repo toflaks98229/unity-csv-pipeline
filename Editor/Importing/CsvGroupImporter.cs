@@ -78,6 +78,7 @@ namespace CsvPipeline
 
                 Bake(id, groups[id], asset);
                 EditorUtility.SetDirty(asset);
+                CsvAssetPipeline.FlushIfCreated(asset, created);
 
                 if (created) report.CountCreated();
                 else report.CountUpdated();

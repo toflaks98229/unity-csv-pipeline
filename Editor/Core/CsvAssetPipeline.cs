@@ -116,6 +116,18 @@ namespace CsvPipeline
         }
 
         /// <summary>
+        /// 방금 만든 에셋이면 값을 곧바로 디스크에 씁니다.
+        /// 지워진 경로에 다시 만들면 재임포트가 끼어들어 <b>메모리에만 있던 수정이 버려집니다.</b>
+        /// 저장을 배치 끝까지 미루지 않는 것으로 그 창을 없앱니다. (갱신 경로는 그대로 미룹니다)
+        /// </summary>
+        /// <param name="asset">방금 굽고 더럽힌 에셋입니다.</param>
+        /// <param name="created">이번에 새로 만든 것인지 여부입니다.</param>
+        public static void FlushIfCreated(UnityEngine.Object asset, bool created)
+        {
+            if (created && asset != null) AssetDatabase.SaveAssetIfDirty(asset);
+        }
+
+        /// <summary>
         /// 타입을 런타임에 정하는 경우의 <see cref="CreateOrLoad{T}(string, out bool)"/>입니다.
         /// </summary>
         /// <param name="type">만들 ScriptableObject 타입입니다.</param>

@@ -65,6 +65,7 @@ namespace CsvPipeline
                 BakeRow(row, table, serialized, binder, report, asset);
                 serialized.ApplyModifiedPropertiesWithoutUndo();
                 EditorUtility.SetDirty(asset);
+                CsvAssetPipeline.FlushIfCreated(asset, created);
 
                 if (created) report.CountCreated();
                 else report.CountUpdated();
@@ -191,7 +192,8 @@ namespace CsvPipeline
                     string raw = row.GetString(binding.Column);
                     if (!binder.Apply(target, binding.FieldType, raw, binding, out string error) && error != null)
                     {
-                        plan.Issues.Add(new CsvIssue(CsvIssueSeverity.Warning, error, row.LineNumber, binding.Column));
+                        plan.Issues.Add(new CsvIssue(CsvIssueSeverity.Warning, error,
+                                                     row.LineNumber, Spelling(table, binding)));
                     }
                 }
 
@@ -207,7 +209,7 @@ namespace CsvPipeline
 
                     changes.Add(new CsvFieldChange
                     {
-                        Column = binding.Column,
+                        Column = Spelling(table, binding),
                         Field = binding.PropertyPath,
                         From = from,
                         To = to
@@ -221,6 +223,16 @@ namespace CsvPipeline
 
             return changes;
         }
+
+        /// <summary>
+        /// 표에 적힌 그대로의 열 이름입니다. 자동 연결은 필드 이름을 열 이름으로 삼는데,
+        /// 사람에게는 자기가 적은 표기(<c>MaxSpeed</c>)를 보여 줘야 합니다.
+        /// </summary>
+        /// <param name="table">원본 표입니다.</param>
+        /// <param name="binding">열 연결입니다.</param>
+        /// <returns>표시할 열 이름입니다.</returns>
+        private static string Spelling(CsvTable table, CsvBinding binding)
+            => table.ResolveHeader(binding.Column) ?? binding.Column;
 
         /// <summary>
         /// 연결된 필드 중 표에 대응 열이 없는 것들을 한 번만 알립니다.

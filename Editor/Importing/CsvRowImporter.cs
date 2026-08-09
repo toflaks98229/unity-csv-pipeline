@@ -84,6 +84,7 @@ namespace CsvPipeline
                 Bake(row, asset, serialized);
                 serialized.ApplyModifiedPropertiesWithoutUndo();
                 EditorUtility.SetDirty(asset);
+                CsvAssetPipeline.FlushIfCreated(asset, isNew);
 
                 if (isNew) report.CountCreated();
                 else report.CountUpdated();
