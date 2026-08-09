@@ -3,6 +3,16 @@
 이 패키지의 주목할 만한 변경을 기록합니다.
 형식은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/)를 따르고, 버전은 [유의적 버전](https://semver.org/lang/ko/)을 씁니다.
 
+## [0.1.1] - 2026-08-09
+
+### Added
+
+- `package.json`에 `documentationUrl`·`changelogUrl`·`licensesUrl`.
+  없으면 Package Manager 창의 상세 패널에 문서 링크 버튼이 아예 뜨지 않습니다.
+  (README는 패키지 안에 들어가지만 그 패널이 렌더링해 주지는 않습니다)
+- README 설치 절에 비공개 저장소 인증 조건.
+  Package Manager는 대화형 인증을 못 하므로 자격증명이 미리 캐시돼 있거나 SSH 키가 있어야 합니다.
+
 ## [0.1.0] - 2026-08-09
 
 게임 프로젝트 안에 있던 CSV → ScriptableObject 파이프라인을 독립 패키지로 분리한 첫 배포입니다.
