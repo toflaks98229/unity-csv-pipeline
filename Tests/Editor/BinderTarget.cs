@@ -3,7 +3,7 @@ using UnityEngine;
 
 namespace CsvPipeline.Tests
 {
-    /// <summary>테스트에서 쓰는 열거형입니다. 인덱스와 값이 어긋나 있어 이름 매칭을 검사할 수 있습니다.</summary>
+    /// <summary>테스트에서 쓰는 열거형입니다. 값과 인덱스가 어긋나 있어 이름 매칭을 검사할 수 있습니다.</summary>
     public enum Grade
     {
         /// <summary>작음입니다.</summary>
@@ -53,31 +53,5 @@ namespace CsvPipeline.Tests
 
         /// <summary>오브젝트 참조 필드입니다.</summary>
         public Texture2D icon;
-    }
-
-    /// <summary>자동 연결을 검사할 대상입니다. 필드는 camelCase, 표의 열은 PascalCase입니다.</summary>
-    [CsvAsset("CsvPipelineTests_Widgets.csv", "Id")]
-    public sealed class WidgetData : ScriptableObject
-    {
-        /// <summary>표시 이름입니다. Title 열에 붙습니다.</summary>
-        public string title;
-
-        /// <summary>최고 속도입니다. MaxSpeed 열에 붙습니다.</summary>
-        public float maxSpeed;
-
-        /// <summary>재고 수량입니다. Stock 열에 붙습니다.</summary>
-        public int stock;
-
-        /// <summary>비공개 직렬화 필드도 연결되는지 봅니다. (값은 임포터가 넣습니다)</summary>
-        [SerializeField] private string ownerId = string.Empty;
-
-        /// <summary>표와 연결하지 않는 필드입니다.</summary>
-        [CsvIgnore] public Sprite artwork;
-
-        /// <summary>이름이 다른 열에 붙는 필드입니다.</summary>
-        [CsvColumn("HP", Required = true)] public int health;
-
-        /// <summary>이 테스트에서만 쓰는 읽기 접근자입니다.</summary>
-        public string OwnerId => ownerId;
     }
 }

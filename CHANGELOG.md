@@ -3,6 +3,17 @@
 이 패키지의 주목할 만한 변경을 기록합니다.
 형식은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/)를 따르고, 버전은 [유의적 버전](https://semver.org/lang/ko/)을 씁니다.
 
+## [0.3.1] - 2026-08-10
+
+### Fixed
+
+- **테스트가 스크립트 참조 없는 에셋을 만들던 것.** 테스트용 ScriptableObject 두 개가
+  `TestFixtures.cs` 안에 함께 들어 있었습니다. Unity는 타입 이름과 같은 이름의 파일에서만
+  MonoScript를 찾으므로, `AssetDatabase.CreateAsset` 이 `m_Script` 가 빈 에셋을 만들고
+  콘솔에 `No script asset for WidgetData` 가 반복됐습니다.
+  같은 세션 안에서는 값이 오가 검사는 통과했지만, 도메인 리로드 뒤에는 깨진 에셋입니다.
+  타입마다 파일을 나눴습니다. (`BinderTarget.cs` · `WidgetData.cs`)
+
 ## [0.3.0] - 2026-08-10
 
 ### Fixed
