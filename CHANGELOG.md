@@ -3,6 +3,26 @@
 이 패키지의 주목할 만한 변경을 기록합니다.
 형식은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/)를 따르고, 버전은 [유의적 버전](https://semver.org/lang/ko/)을 씁니다.
 
+## [0.3.2] - 2026-08-10
+
+### Fixed
+
+- **내보내기가 방금 쓴 표를 다시 굽던 것.** 파일을 쓴 뒤 `AssetDatabase.Refresh` 를 부르면
+  포스트프로세서가 발화해, **그 표를 만들어 낸 바로 그 에셋들을 되굽습니다.**
+  결과는 같지만 순전한 낭비이고 로그도 두 배가 됩니다. 쓰는 동안 자동 임포트를 멈춥니다.
+
+### Added
+
+- **`CsvImport.Suppress()`** — 자동 임포트를 잠시 멈추는 범위입니다. `using` 으로 감싸 씁니다.
+  표를 여러 장 한꺼번에 써 넣을 때 쓰는 도중마다 되굽는 낭비를 막습니다.
+  경로를 직접 넘기는 `CsvImportDefinition.Run` 은 명시적 호출이라 영향을 받지 않습니다.
+
+### Changed
+
+- 왕복 통합 검사가 `LogAssert.ignoreFailingMessages` 대신 **`LogAssert.Expect`** 를 씁니다.
+  경고·오류가 나는 것 자체가 그 검사의 기대값이므로, 덮는 대신 명시해 확인합니다.
+  덕분에 검사가 강해지고 콘솔도 조용해집니다.
+
 ## [0.3.1] - 2026-08-10
 
 ### Fixed

@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text;
+using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
@@ -28,9 +29,6 @@ namespace CsvPipeline.Tests
         [SetUp]
         public void SetUp()
         {
-            // 실패 경로를 검사할 때 리포트가 LogError를 내므로, 그것 때문에 테스트가 깨지지 않게 합니다.
-            LogAssert.ignoreFailingMessages = true;
-
             Directory.CreateDirectory(Path.GetFullPath(TempFolder));
             WriteCsv(Sample);
         }
@@ -39,18 +37,25 @@ namespace CsvPipeline.Tests
         [TearDown]
         public void TearDown()
         {
-            LogAssert.ignoreFailingMessages = false;
-
-            AssetDatabase.DeleteAsset(TempFolder);
-            AssetDatabase.Refresh();
+            using (CsvImport.Suppress())
+            {
+                AssetDatabase.DeleteAsset(TempFolder);
+                AssetDatabase.Refresh();
+            }
         }
 
-        /// <summary>표 내용을 임시 폴더에 기록하고 임포트합니다.</summary>
+        /// <summary>
+        /// 표 내용을 임시 폴더에 놓습니다. <b>굽지는 않습니다.</b>
+        /// 굽기는 각 검사가 <see cref="Bake"/>로 한 번만 하며, 그래야 로그와 건수가 검사와 일대일로 대응합니다.
+        /// </summary>
         /// <param name="text">기록할 표 원문입니다.</param>
         private static void WriteCsv(string text)
         {
-            File.WriteAllText(Path.GetFullPath(CsvAssetPath), text, new UTF8Encoding(false));
-            AssetDatabase.ImportAsset(CsvAssetPath, ImportAssetOptions.ForceUpdate);
+            using (CsvImport.Suppress())
+            {
+                File.WriteAllText(Path.GetFullPath(CsvAssetPath), text, new UTF8Encoding(false));
+                AssetDatabase.ImportAsset(CsvAssetPath, ImportAssetOptions.ForceUpdate);
+            }
         }
 
         /// <summary>산출물을 지워 생성 경로부터 다시 확인할 수 있게 합니다.</summary>
@@ -155,6 +160,9 @@ namespace CsvPipeline.Tests
             ClearOutput();
             WriteCsv("Id,Title,MaxSpeed,Stock,OwnerId\nWidget_A,첫 위젯,30,12,Player\n");
 
+            // 오류가 나는 것 자체가 이 검사의 기대값입니다. 무시하지 않고 명시해 확인합니다.
+            LogAssert.Expect(LogType.Error, new Regex("열 'HP'"));
+
             CsvImportReport report = Bake();
 
             Assert.IsTrue(report.HasErrors, "빠진 HP 열이 오류로 보고돼야 합니다.");
@@ -170,6 +178,8 @@ namespace CsvPipeline.Tests
             WriteCsv("Id,Title,MaxSpeed,Stock,OwnerId,HP\n"
                    + "Widget_A,첫 위젯,30,12,Player,100\n"
                    + " ,이름 없음,1,1,,1\n");
+
+            LogAssert.Expect(LogType.Warning, new Regex("비어 있어 건너뜁니다"));
 
             CsvImportReport report = Bake();
 

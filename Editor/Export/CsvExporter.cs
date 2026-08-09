@@ -75,20 +75,26 @@ namespace CsvPipeline
             if (!proceed) return;
 
             int written = 0;
-            foreach (CsvSchema schema in schemas)
+
+            // 방금 쓴 표를 Refresh가 다시 임포트하면, 그 표를 만들어 낸 바로 그 에셋들을 되굽습니다.
+            // 결과는 같지만 순전한 낭비이고 로그도 두 배가 되므로 쓰는 동안 자동 임포트를 멈춥니다.
+            using (CsvImport.Suppress())
             {
-                if (!changed.Contains(schema.Declaration.FileName)) continue;
+                foreach (CsvSchema schema in schemas)
+                {
+                    if (!changed.Contains(schema.Declaration.FileName)) continue;
 
-                string text = Build(schema, out _);
-                if (text == null) continue;
+                    string text = Build(schema, out _);
+                    if (text == null) continue;
 
-                string path = ResolveTargetPath(schema.Declaration.FileName);
-                Directory.CreateDirectory(Path.GetDirectoryName(path) ?? ".");
-                File.WriteAllText(path, Normalize(text), new UTF8Encoding(false));
-                written++;
+                    string path = ResolveTargetPath(schema.Declaration.FileName);
+                    Directory.CreateDirectory(Path.GetDirectoryName(path) ?? ".");
+                    File.WriteAllText(path, Normalize(text), new UTF8Encoding(false));
+                    written++;
+                }
+
+                AssetDatabase.Refresh();
             }
-
-            AssetDatabase.Refresh();
             Debug.Log($"{TAG} {written}개 표를 에셋 내용으로 갱신했습니다. (동일 {same.Count} / 실패 {failed.Count})");
         }
 

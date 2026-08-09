@@ -45,6 +45,10 @@ namespace CsvPipeline
         /// <param name="moved">이동된 에셋의 새 경로들입니다.</param>
         public void Execute(string[] imported, string[] deleted, string[] moved)
         {
+            // 표를 여러 장 써 넣는 도중이면 굽지 않습니다. 자동 경로만 막고, 경로를 직접 넘기는
+            // Run은 명시적 호출이라 그대로 돕니다.
+            if (CsvImport.IsSuppressed) return;
+
             string fileName = FileName;
             string outputFolder = OutputFolder;
 
