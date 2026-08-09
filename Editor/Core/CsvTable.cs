@@ -18,7 +18,10 @@ namespace CsvPipeline
         {
             Headers = headers ?? Array.Empty<string>();
             Rows = rows ?? Array.Empty<CsvRow>();
-            _headerSet = new HashSet<string>(Headers, StringComparer.Ordinal);
+
+            // 헤더는 대소문자를 가리지 않습니다. 표는 PascalCase(MaxSpeed), 필드는 camelCase(maxSpeed)로
+            // 적히는 것이 보통이라, 가려서 비교하면 자동 연결이 하나도 붙지 않습니다.
+            _headerSet = new HashSet<string>(Headers, StringComparer.OrdinalIgnoreCase);
         }
 
         /// <summary>헤더(열 이름) 목록입니다. 표에 적힌 순서를 지킵니다.</summary>
@@ -30,7 +33,7 @@ namespace CsvPipeline
         /// <summary>데이터 행 수입니다.</summary>
         public int Count => Rows.Count;
 
-        /// <summary>표에 지정 열이 있는지 여부입니다. (대소문자 구분)</summary>
+        /// <summary>표에 지정 열이 있는지 여부입니다. 대소문자는 가리지 않습니다.</summary>
         /// <param name="column">확인할 열 이름입니다.</param>
         /// <returns>열이 있으면 true입니다.</returns>
         public bool HasColumn(string column) => !string.IsNullOrEmpty(column) && _headerSet.Contains(column);
@@ -53,19 +56,39 @@ namespace CsvPipeline
         }
 
         /// <summary>
-        /// 대소문자만 다른 열을 찾습니다. 오타 안내에 씁니다.
+        /// 이름이 거의 같은 열을 찾습니다. 오타 안내에 씁니다.
+        /// 대소문자는 이미 <see cref="HasColumn"/>이 흡수하므로, 여기서는 공백·밑줄·하이픈 차이를 봅니다.
         /// </summary>
         /// <param name="column">찾던 열 이름입니다.</param>
-        /// <returns>대소문자만 다른 실제 열 이름이거나, 없으면 null입니다.</returns>
+        /// <returns>거의 같은 실제 열 이름이거나, 없으면 null입니다.</returns>
         public string FindSimilarColumn(string column)
         {
             if (string.IsNullOrEmpty(column)) return null;
 
+            string needle = Squash(column);
+            if (needle.Length == 0) return null;
+
             for (int i = 0; i < Headers.Count; i++)
             {
-                if (string.Equals(Headers[i], column, StringComparison.OrdinalIgnoreCase)) return Headers[i];
+                if (Squash(Headers[i]) == needle) return Headers[i];
             }
             return null;
+        }
+
+        /// <summary>비교용으로 이름에서 구분 기호를 걷어내고 소문자로 만듭니다.</summary>
+        /// <param name="name">정규화할 이름입니다.</param>
+        /// <returns>정규화된 이름입니다.</returns>
+        private static string Squash(string name)
+        {
+            if (string.IsNullOrEmpty(name)) return string.Empty;
+
+            var text = new System.Text.StringBuilder(name.Length);
+            foreach (char c in name)
+            {
+                if (c == ' ' || c == '_' || c == '-') continue;
+                text.Append(char.ToLowerInvariant(c));
+            }
+            return text.ToString();
         }
     }
 }

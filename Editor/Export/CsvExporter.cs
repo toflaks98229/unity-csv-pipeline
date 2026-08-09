@@ -132,7 +132,7 @@ namespace CsvPipeline
 
                 foreach (CsvBinding binding in schema.Bindings)
                 {
-                    if (binding.Column == schema.Declaration.IdColumn) continue;
+                    if (string.Equals(binding.Column, schema.Declaration.IdColumn, StringComparison.OrdinalIgnoreCase)) continue;
                     cells.Add(Format(serialized.FindProperty(binding.PropertyPath), binding));
                 }
 
@@ -151,7 +151,7 @@ namespace CsvPipeline
             var headers = new List<string> { schema.Declaration.IdColumn };
             foreach (CsvBinding binding in schema.Bindings)
             {
-                if (binding.Column != schema.Declaration.IdColumn) headers.Add(binding.Column);
+                if (!string.Equals(binding.Column, schema.Declaration.IdColumn, StringComparison.OrdinalIgnoreCase)) headers.Add(binding.Column);
             }
             return headers;
         }

@@ -42,6 +42,7 @@ namespace CsvPipeline
         /// <summary>
         /// 이 행에 지정 키의 셀이 있는지 여부입니다.
         /// 뒤쪽 셀이 잘린 행에서는 열이 표에 있어도 false입니다. 열 자체의 존재는 <see cref="HasColumn"/>로 보십시오.
+        /// <see cref="CsvReader.ReadTable(string)"/>로 만든 행은 대소문자를 가리지 않습니다.
         /// </summary>
         /// <param name="key">확인할 헤더 이름입니다.</param>
         /// <returns>이 행에 해당 셀이 있으면 true입니다.</returns>
@@ -58,7 +59,7 @@ namespace CsvPipeline
             if (_headers == null) return Has(key);
             for (int i = 0; i < _headers.Count; i++)
             {
-                if (string.Equals(_headers[i], key, StringComparison.Ordinal)) return true;
+                if (string.Equals(_headers[i], key, StringComparison.OrdinalIgnoreCase)) return true;
             }
             return false;
         }

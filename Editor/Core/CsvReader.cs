@@ -44,7 +44,9 @@ namespace CsvPipeline
         /// <returns>파싱된 행 데이터 목록입니다.</returns>
         public static List<Dictionary<string, object>> Read(string text, char delimiter)
         {
-            Parse(text, delimiter, out _, out List<Dictionary<string, object>> cells, out _);
+            // 이 경로는 예전부터 쓰던 것이라 대소문자를 가리던 동작을 그대로 둡니다.
+            Parse(text, delimiter, StringComparer.Ordinal,
+                  out _, out List<Dictionary<string, object>> cells, out _);
             return cells;
         }
 
@@ -59,7 +61,8 @@ namespace CsvPipeline
         /// <returns>파싱된 표입니다. 내용이 없으면 빈 표입니다.</returns>
         public static CsvTable ReadTable(string text, char delimiter)
         {
-            Parse(text, delimiter, out List<string> header,
+            // 표 경로는 헤더를 대소문자 없이 찾습니다. MaxSpeed 열과 maxSpeed 필드가 붙어야 하기 때문입니다.
+            Parse(text, delimiter, StringComparer.OrdinalIgnoreCase, out List<string> header,
                   out List<Dictionary<string, object>> cells, out List<int> lines);
 
             var rows = new List<CsvRow>(cells.Count);
@@ -73,10 +76,11 @@ namespace CsvPipeline
         /// </summary>
         /// <param name="text">분석할 원문입니다.</param>
         /// <param name="delimiter">필드 구분자입니다.</param>
+        /// <param name="comparer">셀을 찾을 때 쓸 헤더 이름 비교자입니다.</param>
         /// <param name="header">헤더 목록을 받습니다.</param>
         /// <param name="cells">행별 헤더-값 사전을 받습니다. 값은 추론된 타입(int/float/string)입니다.</param>
         /// <param name="lines">행별 원본 줄 번호를 받습니다. <paramref name="cells"/>와 같은 순서입니다.</param>
-        private static void Parse(string text, char delimiter, out List<string> header,
+        private static void Parse(string text, char delimiter, StringComparer comparer, out List<string> header,
                                   out List<Dictionary<string, object>> cells, out List<int> lines)
         {
             header = new List<string>();
@@ -96,7 +100,7 @@ namespace CsvPipeline
                 // 첫 열이 비어 있는 행은 건너뜁니다. (구분자만 있는 빈 줄 방어)
                 if (values.Count == 0 || string.IsNullOrEmpty(values[0])) continue;
 
-                var entry = new Dictionary<string, object>();
+                var entry = new Dictionary<string, object>(comparer);
                 for (int j = 0; j < header.Count && j < values.Count; j++)
                 {
                     entry[header[j]] = InferType(values[j]);
