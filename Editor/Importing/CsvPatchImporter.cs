@@ -67,6 +67,35 @@ namespace CsvPipeline
             }
         }
 
+        /// <summary>
+        /// 어떤 에셋이 갱신될지 계산합니다. 이 임포터는 만들지도 지우지도 않으므로 갱신과 건너뜀만 나옵니다.
+        /// </summary>
+        /// <param name="table">파싱된 표입니다.</param>
+        /// <param name="plan">채울 계획입니다.</param>
+        protected override void BuildPlan(CsvTable table, CsvImportPlan plan)
+        {
+            Dictionary<string, T> byKey = BuildIndex();
+
+            foreach (CsvRow row in table.Rows)
+            {
+                string key = GetRowKey(row);
+                if (string.IsNullOrEmpty(key))
+                {
+                    plan.Add(CsvChangeKind.Skip, null, row.LineNumber, "조회 키가 비어 있습니다.");
+                    continue;
+                }
+
+                if (!byKey.TryGetValue(key, out T asset))
+                {
+                    plan.Add(CsvChangeKind.Skip, null, row.LineNumber,
+                             $"'{key}'에 해당하는 {typeof(T).Name}가 없습니다.");
+                    continue;
+                }
+
+                plan.Add(CsvChangeKind.Update, AssetDatabase.GetAssetPath(asset), row.LineNumber);
+            }
+        }
+
         /// <summary>프로젝트의 T 에셋을 조회 키로 색인합니다.</summary>
         /// <returns>키 → 에셋 사전입니다.</returns>
         private Dictionary<string, T> BuildIndex()

@@ -184,6 +184,51 @@ namespace CsvPipeline
         }
 
         /// <summary>
+        /// 표에서 사라진 산출물을 <b>지우지 않고</b> 분류만 합니다. 미리보기가 씁니다.
+        /// </summary>
+        /// <param name="folder">정리 대상 폴더입니다.</param>
+        /// <param name="typeFilter">AssetDatabase 검색 필터입니다.</param>
+        /// <param name="valid">이번 임포트로 확정된 이름 또는 경로들입니다.</param>
+        /// <param name="byPath">true면 <paramref name="valid"/>를 경로로, false면 파일 이름으로 대조합니다.</param>
+        /// <param name="deletable">지워도 되는 경로들을 받습니다.</param>
+        /// <param name="preserved">참조가 남아 보존할 경로들을 받습니다.</param>
+        public static void PlanReconcile(string folder, string typeFilter, ICollection<string> valid, bool byPath,
+                                         out List<string> deletable, out List<string> preserved)
+        {
+            deletable = new List<string>();
+            preserved = new List<string>();
+            if (!AssetDatabase.IsValidFolder(folder)) return;
+
+            List<string> candidates = FindObsolete(folder, typeFilter, valid, byPath);
+            if (candidates.Count == 0) return;
+
+            HashSet<string> referenced = FindReferenced(candidates);
+            foreach (string path in candidates)
+            {
+                if (referenced.Contains(path)) preserved.Add(path);
+                else deletable.Add(path);
+            }
+        }
+
+        /// <summary>폴더에서 이번 임포트로 확정되지 않은 에셋들을 찾습니다.</summary>
+        /// <param name="folder">검색할 폴더입니다.</param>
+        /// <param name="typeFilter">AssetDatabase 검색 필터입니다.</param>
+        /// <param name="valid">확정된 이름 또는 경로들입니다.</param>
+        /// <param name="byPath">경로로 대조할지 여부입니다.</param>
+        /// <returns>사라진 것으로 판정된 에셋 경로들입니다.</returns>
+        private static List<string> FindObsolete(string folder, string typeFilter, ICollection<string> valid, bool byPath)
+        {
+            var candidates = new List<string>();
+            foreach (string guid in AssetDatabase.FindAssets(typeFilter, new[] { folder }))
+            {
+                string path = AssetDatabase.GUIDToAssetPath(guid);
+                string key = byPath ? path : Path.GetFileNameWithoutExtension(path);
+                if (!valid.Contains(key)) candidates.Add(path);
+            }
+            return candidates;
+        }
+
+        /// <summary>
         /// 삭제 후보 중 <b>아무도 참조하지 않는 것만</b> 지웁니다. 참조가 남은 것은 경고만 남기고 보존합니다.
         /// </summary>
         /// <param name="candidates">CSV에서 사라져 삭제 대상이 된 에셋 경로들입니다.</param>

@@ -107,6 +107,122 @@ namespace CsvPipeline
         }
 
         /// <summary>
+        /// 행마다 무엇이 달라지는지 <b>필드 단위로</b> 계산합니다. 아무것도 쓰지 않습니다.
+        /// 사본을 만들어 실제 변환기로 구워 본 뒤 값을 비교하므로, 미리보기와 실제 결과가 어긋나지 않습니다.
+        /// </summary>
+        /// <param name="table">파싱된 표입니다.</param>
+        /// <param name="plan">채울 계획입니다.</param>
+        protected override void BuildPlan(CsvTable table, CsvImportPlan plan)
+        {
+            string folder = _schema.ResolveOutputFolder();
+            string idColumn = _schema.Declaration.IdColumn;
+
+            if (string.IsNullOrEmpty(folder))
+            {
+                plan.Unsupported = "산출물 폴더를 정하지 못했습니다.";
+                return;
+            }
+
+            var binder = new CsvValueBinder();
+            var validNames = new HashSet<string>();
+
+            foreach (CsvRow row in table.Rows)
+            {
+                string id = row.GetString(idColumn);
+                if (string.IsNullOrEmpty(id))
+                {
+                    plan.Add(CsvChangeKind.Skip, null, row.LineNumber, $"'{idColumn}'이(가) 비어 있습니다.");
+                    continue;
+                }
+
+                validNames.Add(id);
+                string path = $"{folder}/{id}.asset";
+
+                var existing = AssetDatabase.LoadAssetAtPath(path, _schema.AssetType) as ScriptableObject;
+                if (existing == null)
+                {
+                    plan.Add(CsvChangeKind.Create, path, row.LineNumber);
+                    continue;
+                }
+
+                List<CsvFieldChange> changes = DiffRow(row, table, existing, binder, plan);
+
+                // 값이 하나도 달라지지 않으면 굽더라도 결과가 같습니다. 목록에 올리지 않아야
+                // "무엇이 실제로 바뀌는가"가 드러납니다.
+                if (changes.Count == 0) continue;
+
+                CsvPlannedChange planned = plan.Add(CsvChangeKind.Update, path, row.LineNumber);
+                planned.Fields.AddRange(changes);
+            }
+
+            if (_schema.Declaration.DeleteMissing)
+            {
+                PlanObsolete(plan, folder, $"t:{_schema.AssetType.Name}", validNames, false);
+            }
+        }
+
+        /// <summary>
+        /// 사본에 구워 보고 달라지는 필드만 추립니다. 원본은 건드리지 않습니다.
+        /// </summary>
+        /// <param name="row">읽을 행입니다.</param>
+        /// <param name="table">표 전체입니다. 열 존재 확인에 씁니다.</param>
+        /// <param name="existing">비교 대상인 기존 에셋입니다.</param>
+        /// <param name="binder">값 변환기입니다.</param>
+        /// <param name="plan">변환 실패를 기록할 계획입니다.</param>
+        /// <returns>달라지는 필드들입니다.</returns>
+        private List<CsvFieldChange> DiffRow(CsvRow row, CsvTable table, ScriptableObject existing,
+                                             CsvValueBinder binder, CsvImportPlan plan)
+        {
+            var changes = new List<CsvFieldChange>();
+            ScriptableObject probe = Object.Instantiate(existing);
+
+            try
+            {
+                var before = new SerializedObject(existing);
+                var after = new SerializedObject(probe);
+
+                foreach (CsvBinding binding in _schema.Bindings)
+                {
+                    if (!table.HasColumn(binding.Column)) continue;
+
+                    SerializedProperty target = after.FindProperty(binding.PropertyPath);
+                    if (target == null) continue;
+
+                    string raw = row.GetString(binding.Column);
+                    if (!binder.Apply(target, binding.FieldType, raw, binding, out string error) && error != null)
+                    {
+                        plan.Issues.Add(new CsvIssue(CsvIssueSeverity.Warning, error, row.LineNumber, binding.Column));
+                    }
+                }
+
+                after.ApplyModifiedPropertiesWithoutUndo();
+
+                foreach (CsvBinding binding in _schema.Bindings)
+                {
+                    if (!table.HasColumn(binding.Column)) continue;
+
+                    string from = CsvValueFormatter.Format(before.FindProperty(binding.PropertyPath), binding.Separators);
+                    string to = CsvValueFormatter.Format(after.FindProperty(binding.PropertyPath), binding.Separators);
+                    if (from == to) continue;
+
+                    changes.Add(new CsvFieldChange
+                    {
+                        Column = binding.Column,
+                        Field = binding.PropertyPath,
+                        From = from,
+                        To = to
+                    });
+                }
+            }
+            finally
+            {
+                Object.DestroyImmediate(probe);
+            }
+
+            return changes;
+        }
+
+        /// <summary>
         /// 연결된 필드 중 표에 대응 열이 없는 것들을 한 번만 알립니다.
         /// 이름이 거의 같은 열(공백·밑줄 차이)이 있으면 오타로 보고 함께 알립니다.
         /// 대소문자 차이는 매칭이 이미 흡수하므로 여기에 걸리지 않습니다.

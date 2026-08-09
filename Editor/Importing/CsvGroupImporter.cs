@@ -87,5 +87,32 @@ namespace CsvPipeline
 
             CsvAssetPipeline.ReconcileFolderByName(folder, TypeFilter, validNames, LogTag, report);
         }
+
+        /// <summary>그룹마다 만들지 갱신할지, 그리고 무엇이 사라질지를 계산합니다. 쓰지는 않습니다.</summary>
+        /// <param name="table">파싱된 표입니다.</param>
+        /// <param name="plan">채울 계획입니다.</param>
+        protected override void BuildPlan(CsvTable table, CsvImportPlan plan)
+        {
+            var seen = new HashSet<string>();
+
+            foreach (CsvRow row in table.Rows)
+            {
+                string id = GetGroupId(row);
+                if (string.IsNullOrEmpty(id))
+                {
+                    plan.Add(CsvChangeKind.Skip, null, row.LineNumber, "그룹 식별자가 비어 있습니다.");
+                    continue;
+                }
+
+                // 같은 그룹의 두 번째 행부터는 에셋을 더 만들지 않습니다.
+                if (!seen.Add(id)) continue;
+
+                string path = AssetPathFor(id);
+                bool exists = AssetDatabase.LoadAssetAtPath<T>(path) != null;
+                plan.Add(exists ? CsvChangeKind.Update : CsvChangeKind.Create, path, row.LineNumber);
+            }
+
+            PlanObsolete(plan, OutputFolder, TypeFilter, seen, false);
+        }
     }
 }

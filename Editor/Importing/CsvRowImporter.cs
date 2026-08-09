@@ -95,5 +95,34 @@ namespace CsvPipeline
             if (ReconcileByPath) CsvAssetPipeline.ReconcileFolderByPath(folder, TypeFilter, validPaths, LogTag, report);
             else CsvAssetPipeline.ReconcileFolderByName(folder, TypeFilter, validNames, LogTag, report);
         }
+
+        /// <summary>행마다 만들지 갱신할지, 그리고 무엇이 사라질지를 계산합니다. 쓰지는 않습니다.</summary>
+        /// <param name="table">파싱된 표입니다.</param>
+        /// <param name="plan">채울 계획입니다.</param>
+        protected override void BuildPlan(CsvTable table, CsvImportPlan plan)
+        {
+            var validNames = new HashSet<string>();
+            var validPaths = new HashSet<string>();
+
+            foreach (CsvRow row in table.Rows)
+            {
+                string id = GetId(row);
+                if (string.IsNullOrEmpty(id))
+                {
+                    plan.Add(CsvChangeKind.Skip, null, row.LineNumber, "식별자가 비어 있습니다.");
+                    continue;
+                }
+
+                string path = AssetPathFor(id);
+                bool exists = AssetDatabase.LoadAssetAtPath<T>(path) != null;
+
+                plan.Add(exists ? CsvChangeKind.Update : CsvChangeKind.Create, path, row.LineNumber);
+                validNames.Add(id);
+                validPaths.Add(path);
+            }
+
+            PlanObsolete(plan, OutputFolder, TypeFilter,
+                         ReconcileByPath ? (ICollection<string>)validPaths : validNames, ReconcileByPath);
+        }
     }
 }

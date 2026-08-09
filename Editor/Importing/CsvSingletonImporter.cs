@@ -47,6 +47,39 @@ namespace CsvPipeline
             EditorUtility.SetDirty(asset);
         }
 
+        /// <summary>
+        /// 어느 에셋이 갱신될지 계산합니다. 이 임포터는 만들지도 지우지도 않습니다.
+        /// </summary>
+        /// <param name="table">파싱된 표입니다.</param>
+        /// <param name="plan">채울 계획입니다.</param>
+        protected override void BuildPlan(CsvTable table, CsvImportPlan plan)
+        {
+            var paths = new List<string>();
+            foreach (string guid in AssetDatabase.FindAssets(TypeFilter))
+            {
+                paths.Add(AssetDatabase.GUIDToAssetPath(guid));
+            }
+            paths.Sort(System.StringComparer.Ordinal);
+
+            if (paths.Count == 0)
+            {
+                string hint = MissingAssetHint;
+                plan.Issues.Add(new CsvIssue(CsvIssueSeverity.Error,
+                    $"{typeof(T).Name} 에셋이 없습니다. 이 표는 에셋을 새로 만들지 않습니다."
+                    + (string.IsNullOrEmpty(hint) ? string.Empty : $" {hint}")));
+                plan.Unsupported = "갱신할 에셋이 없습니다.";
+                return;
+            }
+
+            if (paths.Count > 1)
+            {
+                plan.Issues.Add(new CsvIssue(CsvIssueSeverity.Warning,
+                    $"{typeof(T).Name} 에셋이 {paths.Count}개입니다. 경로순 첫 번째만 갱신합니다."));
+            }
+
+            plan.Add(CsvChangeKind.Update, paths[0], 0, $"표 {table.Count}행이 이 에셋 하나에 반영됩니다.");
+        }
+
         /// <summary>프로젝트에서 대상 에셋을 찾습니다. 없으면 오류로 보고하고 null입니다.</summary>
         /// <param name="report">결과를 기록할 리포트입니다.</param>
         /// <returns>찾은 에셋이거나 null입니다.</returns>

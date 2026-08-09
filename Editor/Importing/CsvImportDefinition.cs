@@ -1,4 +1,6 @@
+using System;
 using System.Collections.Generic;
+using System.Reflection;
 using UnityEditor;
 
 namespace CsvPipeline
@@ -123,5 +125,116 @@ namespace CsvPipeline
         /// <param name="table">파싱된 표입니다. 행이 하나 이상 있습니다.</param>
         /// <param name="report">건수와 문제를 기록할 리포트입니다.</param>
         protected abstract void Process(CsvTable table, CsvImportReport report);
+
+        // ====================================================================================================
+        // 미리보기
+        // ====================================================================================================
+
+        /// <summary>미리보기에 표시할 이름입니다. 기본값은 로그 태그에서 대괄호를 뗀 것입니다.</summary>
+        protected virtual string PlanLabel => LogTag.Trim('[', ']');
+
+        /// <summary>
+        /// 표를 지금 구우면 <b>무엇이 달라지는지</b> 계산합니다. <b>아무것도 쓰지 않습니다.</b>
+        /// </summary>
+        /// <param name="csvPath">읽을 표의 경로입니다. null이면 파일 이름으로 찾습니다.</param>
+        /// <returns>계획입니다. 세울 수 없었으면 <see cref="CsvImportPlan.Unsupported"/>에 이유가 담깁니다.</returns>
+        public CsvImportPlan Plan(string csvPath = null)
+        {
+            var plan = new CsvImportPlan(FileName, PlanLabel);
+
+            string path = csvPath ?? CsvAssetPipeline.FindCsvPath(FileName);
+            if (path == null)
+            {
+                plan.Unsupported = "표 파일을 찾지 못했습니다.";
+                return plan;
+            }
+
+            plan.OutputFolder = OutputFolder;
+
+            CsvTable table = CsvImportUtil.ReadTable(path);
+            if (table == null)
+            {
+                plan.Unsupported = "표를 읽지 못했거나 데이터 행이 없습니다.";
+                return plan;
+            }
+
+            List<string> missing = table.FindMissingColumns(RequiredColumns);
+            if (missing.Count > 0)
+            {
+                foreach (string column in missing)
+                {
+                    string similar = table.FindSimilarColumn(column);
+                    plan.Issues.Add(new CsvIssue(CsvIssueSeverity.Error, similar != null
+                        ? $"열 '{column}'이(가) 없습니다. 이름이 비슷한 '{similar}'이(가) 있습니다."
+                        : $"열 '{column}'이(가) 없습니다."));
+                }
+                plan.Unsupported = "필수 열이 빠져 있어 굽지 않습니다.";
+                return plan;
+            }
+
+            BuildPlan(table, plan);
+            return plan;
+        }
+
+        /// <summary>
+        /// 표를 읽어 예정된 변경을 채웁니다. 재정의하지 않으면 미리보기를 지원하지 않는 것으로 봅니다.
+        /// <b>여기서 에셋을 쓰면 안 됩니다.</b>
+        /// </summary>
+        /// <param name="table">파싱된 표입니다.</param>
+        /// <param name="plan">채울 계획입니다.</param>
+        protected virtual void BuildPlan(CsvTable table, CsvImportPlan plan)
+            => plan.Unsupported = "이 임포터는 미리보기를 지원하지 않습니다.";
+
+        /// <summary>
+        /// 표에서 사라질 산출물을 계획에 더합니다. 참조가 남은 것은 보존으로 분류합니다.
+        /// </summary>
+        /// <param name="plan">채울 계획입니다.</param>
+        /// <param name="folder">정리 대상 폴더입니다.</param>
+        /// <param name="typeFilter">AssetDatabase 검색 필터입니다.</param>
+        /// <param name="valid">이번 표로 확정된 이름 또는 경로들입니다.</param>
+        /// <param name="byPath">경로로 대조할지 여부입니다.</param>
+        protected static void PlanObsolete(CsvImportPlan plan, string folder, string typeFilter,
+                                           ICollection<string> valid, bool byPath)
+        {
+            CsvAssetPipeline.PlanReconcile(folder, typeFilter, valid, byPath,
+                                           out List<string> deletable, out List<string> preserved);
+
+            foreach (string path in deletable) plan.Add(CsvChangeKind.Delete, path);
+            foreach (string path in preserved)
+            {
+                plan.Add(CsvChangeKind.Preserve, path, 0, "다른 곳에서 참조 중이라 지우지 않습니다.");
+            }
+        }
+
+        /// <summary>
+        /// 로드된 어셈블리에서 매개변수 없는 생성자를 가진 임포터 정의를 모두 찾아 만듭니다.
+        /// 미리보기 창이 직접 작성한 임포터까지 목록에 올리는 데 씁니다.
+        /// </summary>
+        /// <returns>찾은 정의들입니다. 표 파일 이름 순입니다.</returns>
+        public static List<CsvImportDefinition> DiscoverAll()
+        {
+            var found = new List<CsvImportDefinition>();
+
+            foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                Type[] types;
+                try { types = assembly.GetTypes(); }
+                catch (ReflectionTypeLoadException e) { types = e.Types; }
+
+                foreach (Type type in types)
+                {
+                    if (type == null || type.IsAbstract || type.IsGenericTypeDefinition) continue;
+                    if (!typeof(CsvImportDefinition).IsAssignableFrom(type)) continue;
+                    if (type.GetConstructor(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
+                                            null, Type.EmptyTypes, null) == null) continue;
+
+                    try { found.Add((CsvImportDefinition)Activator.CreateInstance(type, true)); }
+                    catch (Exception) { /* 만들 수 없는 정의는 목록에서 빠집니다. */ }
+                }
+            }
+
+            found.Sort((a, b) => string.CompareOrdinal(a.FileName, b.FileName));
+            return found;
+        }
     }
 }

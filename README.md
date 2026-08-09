@@ -48,7 +48,7 @@ public class ClueData : ScriptableObject
 "com.toflaks.csv-pipeline": "https://github.com/toflaks98229/unity-csv-pipeline.git"
 ```
 
-버전을 고정하려면 `#v0.4.0` 처럼 태그를 붙입니다.
+버전을 고정하려면 `#v0.5.0` 처럼 태그를 붙입니다.
 서브모듈로 쓰려면 `Packages/com.toflaks.csv-pipeline` 경로에 두면 됩니다.
 
 ### ⚠️ 비공개 저장소라면 — 자격증명이 미리 있어야 합니다
@@ -182,6 +182,30 @@ public sealed class ClueImporter : AssetPostprocessor
 
 ---
 
+## 굽기 전에 확인하기
+
+**`Tools ▸ CSV Pipeline ▸ 미리보기 (굽지 않고 확인)`**
+
+표를 지금 구우면 무엇이 생기고·바뀌고·지워지는지 적용 전에 보여 줍니다. **아무것도 쓰지 않습니다.**
+
+```
+QuestData · Quests.csv                       생성 1 / 갱신 2 / 삭제 1 / 보존 1
+  ＋ 생성  Quest_NightWatch      5행
+  ·  갱신  Quest_DeepWell        4행
+       TimeLimit    900  →  1200
+       Difficulty   Normal  →  Hard
+  －  삭제  Quest_Removed
+  ◦  보존  Quest_Old             다른 곳에서 참조 중이라 지우지 않습니다
+```
+
+`[CsvAsset]` 로 선언한 표는 **어느 열이 무엇에서 무엇으로 바뀌는지**까지 나옵니다.
+사본에 실제 변환기로 구워 본 뒤 비교하므로 미리보기와 실제 결과가 어긋나지 않습니다.
+직접 작성한 임포터도 목록에 오르며, 생성·갱신·삭제·보존을 에셋 단위로 보여 줍니다.
+
+값이 하나도 달라지지 않는 행은 올라오지 않습니다. 그래야 실제로 바뀌는 것이 눈에 들어옵니다.
+
+---
+
 ## 결과 보기
 
 임포트 결과는 표마다 **한 줄의 로그**로 나옵니다. 흩어진 로그를 뒤질 필요가 없습니다.
@@ -278,6 +302,7 @@ Google Sheets ──(에디터가 주기적으로 당김)──▶ CSV 루트/*.
 
 | 메뉴 | 하는 일 |
 |---|---|
+| `Tools ▸ CSV Pipeline ▸ 미리보기 (굽지 않고 확인)` | 굽기 전에 무엇이 달라지는지 확인 |
 | `Tools ▸ CSV Pipeline ▸ Rebuild All Data` | CSV 루트의 전 표를 강제 재임포트 |
 | `Tools ▸ CSV Pipeline ▸ ScriptableObject를 표로 내보내기` | 에셋에서 표를 다시 뽑음 |
 | `Tools ▸ CSV Pipeline ▸ Google Sheet에서 받기` | 켜진 항목을 받아 **바뀐 파일만** 기록·재임포트 |

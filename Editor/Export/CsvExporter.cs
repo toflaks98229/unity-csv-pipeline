@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.IO;
 using System.Text;
 using UnityEditor;
@@ -95,6 +94,7 @@ namespace CsvPipeline
 
                 AssetDatabase.Refresh();
             }
+
             Debug.Log($"{TAG} {written}개 표를 에셋 내용으로 갱신했습니다. (동일 {same.Count} / 실패 {failed.Count})");
         }
 
@@ -144,7 +144,7 @@ namespace CsvPipeline
                 foreach (CsvBinding binding in schema.Bindings)
                 {
                     if (string.Equals(binding.Column, schema.Declaration.IdColumn, StringComparison.OrdinalIgnoreCase)) continue;
-                    cells.Add(Format(serialized.FindProperty(binding.PropertyPath), binding));
+                    cells.Add(CsvValueFormatter.Format(serialized.FindProperty(binding.PropertyPath), binding.Separators));
                 }
 
                 writer.WriteRow(cells);
@@ -176,90 +176,6 @@ namespace CsvPipeline
         /// <returns>쓸 헤더 표기입니다.</returns>
         private static string Spelling(string column, CsvTable source)
             => source?.ResolveHeader(column) ?? column;
-
-        /// <summary>프로퍼티 값을 셀 문자열로 되돌립니다. 임포트 시의 해석과 짝이 맞아야 합니다.</summary>
-        /// <param name="property">읽을 프로퍼티입니다.</param>
-        /// <param name="binding">열 연결 설정입니다.</param>
-        /// <returns>셀 문자열입니다.</returns>
-        private static string Format(SerializedProperty property, CsvBinding binding)
-        {
-            if (property == null) return string.Empty;
-
-            if (property.isArray && property.propertyType != SerializedPropertyType.String)
-            {
-                char separator = binding.Separators != null && binding.Separators.Length > 0
-                    ? binding.Separators[0]
-                    : ';';
-
-                var parts = new List<string>(property.arraySize);
-                for (int i = 0; i < property.arraySize; i++)
-                {
-                    parts.Add(FormatScalar(property.GetArrayElementAtIndex(i)));
-                }
-                return string.Join(separator.ToString(), parts);
-            }
-
-            return FormatScalar(property);
-        }
-
-        /// <summary>스칼라 프로퍼티 하나를 셀 문자열로 되돌립니다.</summary>
-        /// <param name="property">읽을 프로퍼티입니다.</param>
-        /// <returns>셀 문자열입니다.</returns>
-        private static string FormatScalar(SerializedProperty property)
-        {
-            switch (property.propertyType)
-            {
-                case SerializedPropertyType.String:
-                    return property.stringValue ?? string.Empty;
-
-                case SerializedPropertyType.Integer:
-                    return property.longValue.ToString(CultureInfo.InvariantCulture);
-
-                case SerializedPropertyType.Float:
-                    return property.type == "double"
-                        ? property.doubleValue.ToString("R", CultureInfo.InvariantCulture)
-                        : property.floatValue.ToString("R", CultureInfo.InvariantCulture);
-
-                case SerializedPropertyType.Boolean:
-                    return property.boolValue ? "TRUE" : "FALSE";
-
-                case SerializedPropertyType.Enum:
-                {
-                    int index = property.enumValueIndex;
-                    string[] names = property.enumNames;
-                    return index >= 0 && index < names.Length ? names[index] : string.Empty;
-                }
-
-                case SerializedPropertyType.Color:
-                    return "#" + ColorUtility.ToHtmlStringRGBA(property.colorValue);
-
-                case SerializedPropertyType.Vector2:
-                    return Join(property.vector2Value.x, property.vector2Value.y);
-
-                case SerializedPropertyType.Vector3:
-                    return Join(property.vector3Value.x, property.vector3Value.y, property.vector3Value.z);
-
-                case SerializedPropertyType.Vector4:
-                    return Join(property.vector4Value.x, property.vector4Value.y,
-                                property.vector4Value.z, property.vector4Value.w);
-
-                case SerializedPropertyType.ObjectReference:
-                    return property.objectReferenceValue == null ? string.Empty : property.objectReferenceValue.name;
-
-                default:
-                    return string.Empty;
-            }
-        }
-
-        /// <summary>숫자들을 공백으로 이어 붙입니다. (임포트 쪽이 공백 구분을 받습니다)</summary>
-        /// <param name="values">이어 붙일 값들입니다.</param>
-        /// <returns>셀 문자열입니다.</returns>
-        private static string Join(params float[] values)
-        {
-            var parts = new string[values.Length];
-            for (int i = 0; i < values.Length; i++) parts[i] = values[i].ToString("R", CultureInfo.InvariantCulture);
-            return string.Join(" ", parts);
-        }
 
         /// <summary>내보낼 파일의 실제 경로를 정합니다. 기존 파일이 있으면 그 자리에 씁니다.</summary>
         /// <param name="fileName">표 파일 이름입니다.</param>
