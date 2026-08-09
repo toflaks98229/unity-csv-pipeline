@@ -104,6 +104,28 @@ namespace CsvPipeline
                 EditorGUILayout.TextField("시트 연동 설정", settings.SheetSyncSettingsFolder);
                 EditorGUILayout.TextField("스냅숏", settings.SnapshotFolder);
             }
+
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("비공개 시트 인증", EditorStyles.boldLabel);
+
+            if (string.IsNullOrEmpty(settings.ServiceAccountKeyPath))
+            {
+                EditorGUILayout.HelpBox(
+                    "서비스 계정 키가 없습니다. '링크가 있는 모든 사용자 · 뷰어'로 공개된 시트만 받아옵니다.",
+                    MessageType.None);
+            }
+            else if (GoogleServiceAccount.IsConfigured)
+            {
+                EditorGUILayout.HelpBox(
+                    "서비스 계정 키를 찾았습니다. 시트를 그 계정 이메일과 공유하면 비공개 상태로 받아올 수 있습니다.",
+                    MessageType.Info);
+            }
+            else
+            {
+                EditorGUILayout.HelpBox(
+                    $"지정한 경로에 키 파일이 없습니다: {settings.ServiceAccountKeyPath}",
+                    MessageType.Warning);
+            }
         }
     }
 }

@@ -11,16 +11,45 @@ namespace CsvPipeline
     /// </summary>
     public static class CsvAssetPipeline
     {
-        /// <summary>지정한 파일명(예: "LootTables.csv")을 가진 CSV(TextAsset)의 에셋 경로를 찾습니다.</summary>
+        /// <summary>
+        /// 지정한 파일명(예: "LootTables.csv")을 가진 표 파일의 에셋 경로를 찾습니다.
+        /// </summary>
         /// <param name="fileName">찾을 파일 이름입니다. 확장자를 포함합니다.</param>
         /// <returns>찾은 에셋 경로이거나, 없으면 null입니다.</returns>
         public static string FindCsvPath(string fileName)
         {
+            if (string.IsNullOrEmpty(fileName)) return null;
+
             string nameNoExt = Path.GetFileNameWithoutExtension(fileName);
             foreach (string guid in AssetDatabase.FindAssets($"{nameNoExt} t:TextAsset"))
             {
                 string path = AssetDatabase.GUIDToAssetPath(guid);
                 if (Path.GetFileName(path).Equals(fileName, StringComparison.OrdinalIgnoreCase)) return path;
+            }
+
+            // Unity는 .tsv 를 TextAsset으로 임포트하지 않아 위 검색에 걸리지 않습니다.
+            // 설정된 CSV 루트 안을 직접 훑어 폴백합니다.
+            return FindOnDisk(fileName);
+        }
+
+        /// <summary>설정된 CSV 루트 폴더 안에서 파일을 직접 찾습니다.</summary>
+        /// <param name="fileName">찾을 파일 이름입니다.</param>
+        /// <returns>프로젝트 상대 경로이거나, 없으면 null입니다.</returns>
+        private static string FindOnDisk(string fileName)
+        {
+            string root = CsvPipelineSettings.Instance.CsvRootFolder;
+            if (!Directory.Exists(root)) return null;
+
+            try
+            {
+                foreach (string file in Directory.EnumerateFiles(root, fileName, SearchOption.AllDirectories))
+                {
+                    return file.Replace('\\', '/');
+                }
+            }
+            catch (IOException)
+            {
+                // 폴더를 읽지 못하면 못 찾은 것으로 둡니다.
             }
             return null;
         }
@@ -66,11 +95,41 @@ namespace CsvPipeline
         /// <param name="path">에셋 경로입니다.</param>
         /// <returns>로드하거나 새로 만든 에셋입니다.</returns>
         public static T CreateOrLoad<T>(string path) where T : ScriptableObject
+            => CreateOrLoad<T>(path, out _);
+
+        /// <summary>지정 경로의 SO를 로드하거나, 없으면 새로 생성해 반환합니다.</summary>
+        /// <typeparam name="T">대상 ScriptableObject 타입입니다.</typeparam>
+        /// <param name="path">에셋 경로입니다.</param>
+        /// <param name="created">새로 만들었으면 true를 받습니다. (생성/갱신 집계용)</param>
+        /// <returns>로드하거나 새로 만든 에셋입니다.</returns>
+        public static T CreateOrLoad<T>(string path, out bool created) where T : ScriptableObject
         {
             T asset = AssetDatabase.LoadAssetAtPath<T>(path);
-            if (asset == null)
+            created = asset == null;
+
+            if (created)
             {
                 asset = ScriptableObject.CreateInstance<T>();
+                AssetDatabase.CreateAsset(asset, path);
+            }
+            return asset;
+        }
+
+        /// <summary>
+        /// 타입을 런타임에 정하는 경우의 <see cref="CreateOrLoad{T}(string, out bool)"/>입니다.
+        /// </summary>
+        /// <param name="type">만들 ScriptableObject 타입입니다.</param>
+        /// <param name="path">에셋 경로입니다.</param>
+        /// <param name="created">새로 만들었으면 true를 받습니다.</param>
+        /// <returns>로드하거나 새로 만든 에셋입니다.</returns>
+        public static ScriptableObject CreateOrLoad(Type type, string path, out bool created)
+        {
+            var asset = AssetDatabase.LoadAssetAtPath(path, type) as ScriptableObject;
+            created = asset == null;
+
+            if (created)
+            {
+                asset = ScriptableObject.CreateInstance(type);
                 AssetDatabase.CreateAsset(asset, path);
             }
             return asset;
@@ -83,7 +142,9 @@ namespace CsvPipeline
         /// <param name="typeFilter">AssetDatabase 검색 필터입니다. (예: "t:ItemData")</param>
         /// <param name="validNames">이번 임포트로 확정된 에셋 이름들입니다.</param>
         /// <param name="logTag">로그 접두 태그입니다.</param>
-        public static void ReconcileFolderByName(string folder, string typeFilter, ICollection<string> validNames, string logTag)
+        /// <param name="report">결과를 기록할 리포트입니다. null이면 Console에 바로 남깁니다.</param>
+        public static void ReconcileFolderByName(string folder, string typeFilter, ICollection<string> validNames,
+                                                 string logTag, CsvImportReport report = null)
         {
             if (!AssetDatabase.IsValidFolder(folder)) return;
 
@@ -95,7 +156,7 @@ namespace CsvPipeline
                 if (!validNames.Contains(name)) candidates.Add(path);
             }
 
-            DeleteUnreferenced(candidates, logTag);
+            DeleteUnreferenced(candidates, logTag, report);
         }
 
         /// <summary>
@@ -106,7 +167,9 @@ namespace CsvPipeline
         /// <param name="typeFilter">AssetDatabase 검색 필터입니다. (예: "t:CardData")</param>
         /// <param name="validPaths">이번 임포트로 확정된 에셋 경로들입니다.</param>
         /// <param name="logTag">로그 접두 태그입니다.</param>
-        public static void ReconcileFolderByPath(string folder, string typeFilter, ICollection<string> validPaths, string logTag)
+        /// <param name="report">결과를 기록할 리포트입니다. null이면 Console에 바로 남깁니다.</param>
+        public static void ReconcileFolderByPath(string folder, string typeFilter, ICollection<string> validPaths,
+                                                 string logTag, CsvImportReport report = null)
         {
             if (!AssetDatabase.IsValidFolder(folder)) return;
 
@@ -117,7 +180,7 @@ namespace CsvPipeline
                 if (!validPaths.Contains(path)) candidates.Add(path);
             }
 
-            DeleteUnreferenced(candidates, logTag);
+            DeleteUnreferenced(candidates, logTag, report);
         }
 
         /// <summary>
@@ -125,7 +188,8 @@ namespace CsvPipeline
         /// </summary>
         /// <param name="candidates">CSV에서 사라져 삭제 대상이 된 에셋 경로들입니다.</param>
         /// <param name="logTag">로그 접두 태그입니다.</param>
-        private static void DeleteUnreferenced(List<string> candidates, string logTag)
+        /// <param name="report">결과를 기록할 리포트입니다. null이면 Console에 바로 남깁니다.</param>
+        private static void DeleteUnreferenced(List<string> candidates, string logTag, CsvImportReport report)
         {
             if (candidates.Count == 0) return;
 
@@ -135,14 +199,25 @@ namespace CsvPipeline
             {
                 if (referenced.Contains(path))
                 {
-                    Debug.LogWarning(
-                        $"{logTag} CSV에서 사라졌지만 아직 참조 중이라 보존합니다: {path}\n" +
-                        "Id 오타일 수 있습니다. 정말 삭제하려면 참조를 먼저 끊고 직접 지우십시오.");
+                    string keep = $"표에서 사라졌지만 아직 참조 중이라 보존합니다: {path}. "
+                                + "Id 오타일 수 있습니다. 정말 삭제하려면 참조를 먼저 끊고 직접 지우십시오.";
+
+                    if (report != null)
+                    {
+                        report.CountPreserved();
+                        report.Warn(keep, 0, null, AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(path));
+                    }
+                    else
+                    {
+                        Debug.LogWarning($"{logTag} {keep}");
+                    }
                     continue;
                 }
 
                 AssetDatabase.DeleteAsset(path);
-                Debug.Log($"{logTag} Deleted obsolete asset: {path}");
+
+                if (report != null) report.CountDeleted();
+                else Debug.Log($"{logTag} Deleted obsolete asset: {path}");
             }
         }
 

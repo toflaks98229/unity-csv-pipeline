@@ -6,8 +6,7 @@ using System.Linq;
 namespace CsvPipeline
 {
     /// <summary>
-    /// <see cref="CsvReader"/>가 파싱한 한 행(<c>Dictionary&lt;string,object&gt;</c>)을 감싸,
-    /// 임포터들이 공통으로 쓰는 셀 접근·타입 파싱·리스트 분리를 한 곳으로 모은 접근자입니다.
+    /// <see cref="CsvReader"/>가 파싱한 한 행을 감싸, 셀 접근·타입 파싱·리스트 분리를 한 곳으로 모은 접근자입니다.
     /// </summary>
     public readonly struct CsvRow
     {
@@ -15,15 +14,54 @@ namespace CsvPipeline
         public static readonly char[] ListSeparators = { ';', '|' };
 
         private readonly Dictionary<string, object> _cells;
+        private readonly IReadOnlyList<string> _headers;
 
         /// <summary>파싱된 행 딕셔너리를 감쌉니다.</summary>
         /// <param name="cells">헤더-값 쌍입니다.</param>
-        public CsvRow(Dictionary<string, object> cells) { _cells = cells; }
+        public CsvRow(Dictionary<string, object> cells)
+        {
+            _cells = cells;
+            _headers = null;
+            LineNumber = 0;
+        }
 
-        /// <summary>지정 키가 존재하는지 여부입니다.</summary>
+        /// <summary>파싱된 행을 원본 위치·표 헤더와 함께 감쌉니다.</summary>
+        /// <param name="cells">헤더-값 쌍입니다.</param>
+        /// <param name="lineNumber">원본 파일에서의 줄 번호입니다. (1부터, 헤더가 1행)</param>
+        /// <param name="headers">표 전체의 헤더 목록입니다. 열 존재 여부 판정에 씁니다.</param>
+        public CsvRow(Dictionary<string, object> cells, int lineNumber, IReadOnlyList<string> headers)
+        {
+            _cells = cells;
+            _headers = headers;
+            LineNumber = lineNumber;
+        }
+
+        /// <summary>원본 파일에서의 줄 번호입니다. 모르면 0입니다. (오류 메시지에 위치를 붙이는 용도)</summary>
+        public int LineNumber { get; }
+
+        /// <summary>
+        /// 이 행에 지정 키의 셀이 있는지 여부입니다.
+        /// 뒤쪽 셀이 잘린 행에서는 열이 표에 있어도 false입니다. 열 자체의 존재는 <see cref="HasColumn"/>로 보십시오.
+        /// </summary>
         /// <param name="key">확인할 헤더 이름입니다.</param>
-        /// <returns>존재하면 true입니다.</returns>
+        /// <returns>이 행에 해당 셀이 있으면 true입니다.</returns>
         public bool Has(string key) => _cells != null && _cells.ContainsKey(key);
+
+        /// <summary>
+        /// 표의 <b>헤더</b>에 지정 열이 있는지 여부입니다. 셀이 비었는지와 무관합니다.
+        /// 헤더 정보 없이 만들어진 행에서는 <see cref="Has"/>로 폴백합니다.
+        /// </summary>
+        /// <param name="key">확인할 열 이름입니다.</param>
+        /// <returns>열이 존재하면 true입니다.</returns>
+        public bool HasColumn(string key)
+        {
+            if (_headers == null) return Has(key);
+            for (int i = 0; i < _headers.Count; i++)
+            {
+                if (string.Equals(_headers[i], key, StringComparison.Ordinal)) return true;
+            }
+            return false;
+        }
 
         /// <summary>이 행의 모든 헤더(열 이름)입니다. (동적 컬럼을 순회하는 임포터용)</summary>
         public IEnumerable<string> Keys => _cells != null ? _cells.Keys : Enumerable.Empty<string>();
@@ -100,15 +138,36 @@ namespace CsvPipeline
         /// <summary>';'/'|'로 구분된 리스트 셀을 트림된 토큰 배열로 반환합니다. (빈 토큰 제거)</summary>
         /// <param name="key">읽을 헤더 이름입니다.</param>
         /// <returns>토큰 배열입니다.</returns>
-        public string[] GetList(string key)
+        public string[] GetList(string key) => SplitList(GetString(key), ListSeparators);
+
+        /// <summary>지정한 구분자로 리스트 셀을 나눕니다. (빈 토큰 제거)</summary>
+        /// <param name="key">읽을 헤더 이름입니다.</param>
+        /// <param name="separators">쓸 구분자들입니다.</param>
+        /// <returns>토큰 배열입니다.</returns>
+        public string[] GetList(string key, params char[] separators)
+            => SplitList(GetString(key), separators != null && separators.Length > 0 ? separators : ListSeparators);
+
+        /// <summary>원문을 구분자로 나눠 트림된 토큰 배열로 만듭니다.</summary>
+        /// <param name="raw">셀 원문입니다.</param>
+        /// <param name="separators">쓸 구분자들입니다.</param>
+        /// <returns>토큰 배열입니다.</returns>
+        public static string[] SplitList(string raw, char[] separators)
         {
-            string raw = GetString(key);
             return string.IsNullOrEmpty(raw)
                 ? Array.Empty<string>()
-                : raw.Split(ListSeparators, StringSplitOptions.RemoveEmptyEntries)
+                : raw.Split(separators, StringSplitOptions.RemoveEmptyEntries)
                      .Select(s => s.Trim())
                      .Where(s => s.Length > 0)
                      .ToArray();
+        }
+
+        /// <summary>이 셀에 리스트 구분자가 들어 있는지 여부입니다.</summary>
+        /// <param name="key">확인할 헤더 이름입니다.</param>
+        /// <returns>구분자가 있으면 true입니다.</returns>
+        public bool LooksLikeList(string key)
+        {
+            string raw = GetString(key);
+            return !string.IsNullOrEmpty(raw) && raw.IndexOfAny(ListSeparators) >= 0;
         }
     }
 }

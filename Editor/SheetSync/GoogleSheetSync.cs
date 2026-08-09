@@ -492,8 +492,12 @@ namespace CsvPipeline
             if (LooksLikeHtml(body))
             {
                 Debug.LogError(
-                    $"{TAG} {csvFileName}: CSV 대신 HTML이 왔습니다. 시트 공유 설정을 확인하세요.\n"
-                    + "  (공유 → 링크가 있는 모든 사용자 → 뷰어)", settings);
+                    $"{TAG} {csvFileName}: CSV 대신 HTML이 왔습니다. 시트에 접근할 권한이 없다는 뜻입니다.\n"
+                    + "  공개 시트로 쓰려면: 공유 → 링크가 있는 모든 사용자 → 뷰어\n"
+                    + "  비공개로 두려면: Project Settings ▸ CSV Pipeline 에 서비스 계정 키를 지정하고,\n"
+                    + "  그 계정 이메일에게 시트를 공유하십시오."
+                    + (GoogleServiceAccount.IsConfigured ? "\n  (키는 설정돼 있습니다. 시트 공유 대상을 확인하십시오)" : string.Empty),
+                    settings);
                 return PullResult.Failed;
             }
 
@@ -571,13 +575,34 @@ namespace CsvPipeline
         // 보조
         // ====================================================================================================
 
-        /// <summary>URL의 본문을 문자열로 받아옵니다.</summary>
+        /// <summary>
+        /// URL의 본문을 문자열로 받아옵니다.
+        /// 서비스 계정 키가 설정돼 있으면 액세스 토큰을 붙여 <b>비공개 시트</b>도 읽습니다.
+        /// </summary>
         /// <param name="url">받아올 주소입니다.</param>
         /// <returns>응답 본문입니다.</returns>
-        private static Task<string> DownloadTextAsync(string url)
+        private static async Task<string> DownloadTextAsync(string url)
+        {
+            string token = GoogleServiceAccount.IsConfigured
+                ? await GoogleServiceAccount.GetAccessTokenAsync()
+                : null;
+
+            return await DownloadTextAsync(url, token);
+        }
+
+        /// <summary>URL의 본문을 받아옵니다. 토큰이 있으면 Authorization 헤더에 실습니다.</summary>
+        /// <param name="url">받아올 주소입니다.</param>
+        /// <param name="accessToken">쓸 액세스 토큰입니다. null이면 붙이지 않습니다.</param>
+        /// <returns>응답 본문입니다.</returns>
+        private static Task<string> DownloadTextAsync(string url, string accessToken)
         {
             var completion = new TaskCompletionSource<string>();
             UnityWebRequest request = UnityWebRequest.Get(url);
+
+            if (!string.IsNullOrEmpty(accessToken))
+            {
+                request.SetRequestHeader("Authorization", "Bearer " + accessToken);
+            }
 
             UnityWebRequestAsyncOperation operation = request.SendWebRequest();
             operation.completed += _ =>

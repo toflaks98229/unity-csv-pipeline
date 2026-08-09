@@ -26,6 +26,11 @@ namespace CsvPipeline
         [Tooltip("받아 온 시트 내용의 사본을 두는 폴더입니다. 로컬 수정 감지에만 쓰며 버전 관리 대상이 아닙니다.")]
         [SerializeField] private string snapshotFolder = DefaultSnapshotFolder;
 
+        [Header("비공개 시트 (선택)")]
+        [Tooltip("구글 서비스 계정 키(JSON)의 경로입니다. 프로젝트 루트 기준 상대 경로 또는 절대 경로.\n"
+               + "Assets 밖에 두고 버전 관리에서 제외하십시오. 비우면 공개 링크 시트만 받습니다.")]
+        [SerializeField] private string serviceAccountKeyPath = string.Empty;
+
         /// <summary>임포트 대상 CSV들이 모여 있는 폴더입니다.</summary>
         public string CsvRootFolder =>
             string.IsNullOrWhiteSpace(csvRootFolder) ? DefaultCsvRoot : csvRootFolder.TrimEnd('/');
@@ -39,6 +44,12 @@ namespace CsvPipeline
         /// <summary>받아 온 시트 내용의 사본을 두는 폴더입니다.</summary>
         public string SnapshotFolder =>
             string.IsNullOrWhiteSpace(snapshotFolder) ? DefaultSnapshotFolder : snapshotFolder.TrimEnd('/');
+
+        /// <summary>
+        /// 구글 서비스 계정 키 파일의 경로입니다. 비어 있으면 비공개 시트 접근을 시도하지 않습니다.
+        /// </summary>
+        public string ServiceAccountKeyPath =>
+            string.IsNullOrWhiteSpace(serviceAccountKeyPath) ? string.Empty : serviceAccountKeyPath.Trim();
 
         // ====================================================================================================
         // 조회

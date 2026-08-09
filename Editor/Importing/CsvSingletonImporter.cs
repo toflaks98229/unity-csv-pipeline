@@ -28,31 +28,29 @@ namespace CsvPipeline
         protected abstract bool BakeRow(CsvRow row, T asset, SerializedObject serialized);
 
         /// <summary>단일 에셋을 찾아 전 행을 반영합니다.</summary>
-        /// <param name="rows">파싱된 CSV 행들입니다.</param>
-        /// <returns>에셋을 건드렸으면 true입니다.</returns>
-        protected override bool Process(IReadOnlyList<CsvRow> rows)
+        /// <param name="table">파싱된 표입니다.</param>
+        /// <param name="report">건수와 문제를 기록할 리포트입니다.</param>
+        protected override void Process(CsvTable table, CsvImportReport report)
         {
-            T asset = FindSingle();
-            if (asset == null) return false;
+            T asset = FindSingle(report);
+            if (asset == null) return;
 
             var serialized = new SerializedObject(asset);
-            int applied = 0;
 
-            foreach (CsvRow row in rows)
+            foreach (CsvRow row in table.Rows)
             {
-                if (BakeRow(row, asset, serialized)) applied++;
+                if (BakeRow(row, asset, serialized)) report.CountUpdated();
+                else report.CountSkipped();
             }
 
             serialized.ApplyModifiedPropertiesWithoutUndo();
             EditorUtility.SetDirty(asset);
-
-            Debug.Log($"{LogTag} {typeof(T).Name}를 갱신했습니다. (적용 {applied}행)");
-            return true;
         }
 
-        /// <summary>프로젝트에서 대상 에셋을 찾습니다. 없으면 경고 후 null입니다.</summary>
+        /// <summary>프로젝트에서 대상 에셋을 찾습니다. 없으면 오류로 보고하고 null입니다.</summary>
+        /// <param name="report">결과를 기록할 리포트입니다.</param>
         /// <returns>찾은 에셋이거나 null입니다.</returns>
-        private T FindSingle()
+        private T FindSingle(CsvImportReport report)
         {
             var paths = new List<string>();
             foreach (string guid in AssetDatabase.FindAssets(TypeFilter))
@@ -72,8 +70,8 @@ namespace CsvPipeline
             if (found.Count == 0)
             {
                 string hint = MissingAssetHint;
-                Debug.LogWarning(
-                    $"{LogTag} {typeof(T).Name} 에셋을 찾지 못해 표를 반영하지 못했습니다.\n"
+                report.Error(
+                    $"{typeof(T).Name} 에셋을 찾지 못해 표를 반영하지 못했습니다. "
                     + "이 표의 산출물은 프로젝트에 하나뿐인 에셋이라 임포터가 새로 만들지 않습니다."
                     + (string.IsNullOrEmpty(hint) ? string.Empty : $" {hint}"));
                 return null;
@@ -82,9 +80,9 @@ namespace CsvPipeline
             if (found.Count > 1)
             {
                 // 갱신되지 않은 쪽은 낡은 값으로 남아, 어느 것을 참조하느냐에 따라 결과가 갈립니다.
-                Debug.LogWarning(
-                    $"{LogTag} {typeof(T).Name} 에셋이 {found.Count}개 있습니다. 경로순 첫 번째만 갱신합니다.\n"
-                    + "이런 표는 게임 전역의 규칙이므로 하나만 두십시오.");
+                report.Warn(
+                    $"{typeof(T).Name} 에셋이 {found.Count}개 있습니다. 경로순 첫 번째만 갱신합니다. "
+                    + "이런 표는 게임 전역의 규칙이므로 하나만 두십시오.", 0, null, found[0]);
             }
 
             return found[0];

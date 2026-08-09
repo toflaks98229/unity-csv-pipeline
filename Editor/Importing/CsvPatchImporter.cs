@@ -34,24 +34,28 @@ namespace CsvPipeline
         protected virtual string MissingAssetHint => null;
 
         /// <summary>키로 기존 에셋을 찾아 행의 값을 반영합니다.</summary>
-        /// <param name="rows">파싱된 CSV 행들입니다.</param>
-        /// <returns>에셋을 하나라도 건드렸으면 true입니다.</returns>
-        protected override bool Process(IReadOnlyList<CsvRow> rows)
+        /// <param name="table">파싱된 표입니다.</param>
+        /// <param name="report">건수와 문제를 기록할 리포트입니다.</param>
+        protected override void Process(CsvTable table, CsvImportReport report)
         {
             Dictionary<string, T> byKey = BuildIndex();
-            int applied = 0;
 
-            foreach (CsvRow row in rows)
+            foreach (CsvRow row in table.Rows)
             {
                 string key = GetRowKey(row);
-                if (string.IsNullOrEmpty(key)) continue;
+                if (string.IsNullOrEmpty(key))
+                {
+                    report.CountSkipped();
+                    report.Warn("조회 키가 비어 있어 건너뜁니다.", row.LineNumber);
+                    continue;
+                }
 
                 if (!byKey.TryGetValue(key, out T asset))
                 {
                     string hint = MissingAssetHint;
-                    Debug.LogWarning(
-                        $"{LogTag} '{key}'에 해당하는 {typeof(T).Name}를 찾지 못했습니다."
-                        + (string.IsNullOrEmpty(hint) ? string.Empty : $" {hint}"));
+                    report.CountSkipped();
+                    report.Warn($"'{key}'에 해당하는 {typeof(T).Name}를 찾지 못했습니다."
+                                + (string.IsNullOrEmpty(hint) ? string.Empty : $" {hint}"), row.LineNumber);
                     continue;
                 }
 
@@ -59,10 +63,8 @@ namespace CsvPipeline
                 Patch(row, asset, serialized);
                 serialized.ApplyModifiedPropertiesWithoutUndo();
                 EditorUtility.SetDirty(asset);
-                applied++;
+                report.CountUpdated();
             }
-
-            return applied > 0;
         }
 
         /// <summary>프로젝트의 T 에셋을 조회 키로 색인합니다.</summary>

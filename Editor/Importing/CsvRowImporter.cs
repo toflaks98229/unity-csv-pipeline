@@ -6,7 +6,7 @@ namespace CsvPipeline
 {
     /// <summary>
     /// <b>한 행 = 한 에셋</b> 임포터입니다. 행의 식별자를 파일명으로 삼아 에셋을 만들거나 갱신하고,
-    /// CSV에서 사라진 행의 에셋을 정리합니다.
+    /// 표에서 사라진 행의 에셋을 정리합니다.
     /// </summary>
     /// <typeparam name="T">구울 ScriptableObject 타입입니다.</typeparam>
     public abstract class CsvRowImporter<T> : CsvImportDefinition where T : ScriptableObject
@@ -23,7 +23,7 @@ namespace CsvPipeline
         /// 행의 값을 에셋에 기록합니다. <paramref name="serialized"/>에 <see cref="SoBaker"/>로 쓰십시오.
         /// </summary>
         /// <param name="row">읽을 행입니다.</param>
-        /// <param name="asset">대상 에셋입니다. private 필드 접근이 필요 없을 때만 직접 참조하십시오.</param>
+        /// <param name="asset">대상 에셋입니다.</param>
         /// <param name="serialized">대상 에셋의 직렬화 객체입니다. 호출 뒤 자동으로 적용됩니다.</param>
         protected abstract void Bake(CsvRow row, T asset, SerializedObject serialized);
 
@@ -50,10 +50,10 @@ namespace CsvPipeline
         protected virtual T CreateOrLoad(string id, CsvRow row)
             => CsvAssetPipeline.CreateOrLoad<T>(AssetPathFor(id));
 
-        /// <summary>행마다 에셋을 굽고, CSV에서 사라진 산출물을 정리합니다.</summary>
-        /// <param name="rows">파싱된 CSV 행들입니다.</param>
-        /// <returns>에셋을 하나라도 건드렸으면 true입니다.</returns>
-        protected override bool Process(IReadOnlyList<CsvRow> rows)
+        /// <summary>행마다 에셋을 굽고, 표에서 사라진 산출물을 정리합니다.</summary>
+        /// <param name="table">파싱된 표입니다.</param>
+        /// <param name="report">건수와 문제를 기록할 리포트입니다.</param>
+        protected override void Process(CsvTable table, CsvImportReport report)
         {
             string folder = OutputFolder;
             CsvAssetPipeline.EnsureFolder(folder);
@@ -61,27 +61,39 @@ namespace CsvPipeline
             var validNames = new HashSet<string>();
             var validPaths = new HashSet<string>();
 
-            foreach (CsvRow row in rows)
+            foreach (CsvRow row in table.Rows)
             {
                 string id = GetId(row);
-                if (string.IsNullOrEmpty(id)) continue;
+                if (string.IsNullOrEmpty(id))
+                {
+                    report.CountSkipped();
+                    report.Warn("식별자가 비어 있어 건너뜁니다.", row.LineNumber);
+                    continue;
+                }
+
+                bool isNew = AssetDatabase.LoadAssetAtPath<T>(AssetPathFor(id)) == null;
 
                 T asset = CreateOrLoad(id, row);
-                if (asset == null) continue;
+                if (asset == null)
+                {
+                    report.CountSkipped();
+                    continue;
+                }
 
                 var serialized = new SerializedObject(asset);
                 Bake(row, asset, serialized);
                 serialized.ApplyModifiedPropertiesWithoutUndo();
                 EditorUtility.SetDirty(asset);
 
+                if (isNew) report.CountCreated();
+                else report.CountUpdated();
+
                 validNames.Add(id);
                 validPaths.Add(AssetDatabase.GetAssetPath(asset));
             }
 
-            if (ReconcileByPath) CsvAssetPipeline.ReconcileFolderByPath(folder, TypeFilter, validPaths, LogTag);
-            else CsvAssetPipeline.ReconcileFolderByName(folder, TypeFilter, validNames, LogTag);
-
-            return true;
+            if (ReconcileByPath) CsvAssetPipeline.ReconcileFolderByPath(folder, TypeFilter, validPaths, LogTag, report);
+            else CsvAssetPipeline.ReconcileFolderByName(folder, TypeFilter, validNames, LogTag, report);
         }
     }
 }

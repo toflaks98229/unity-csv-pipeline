@@ -3,6 +3,38 @@
 이 패키지의 주목할 만한 변경을 기록합니다.
 형식은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/)를 따르고, 버전은 [유의적 버전](https://semver.org/lang/ko/)을 씁니다.
 
+## [0.2.0] - 2026-08-09
+
+조사에서 드러난 기능 격차 여섯 개를 해소했습니다.
+가장 큰 것은 **쓰려면 C# 서브클래스를 써야 했다**는 점이었습니다.
+
+### Added
+
+- **속성 기반 매핑** — `[CsvAsset]` 을 ScriptableObject에 붙이면 임포터 코드 없이 표가 붙습니다.
+  필드 이름과 열 이름을 대소문자 무시로 맞추고, `[CsvColumn]` 으로 이름·필수 여부·빈 셀 처리·
+  리스트 구분자·참조 검색 폴더를 조정합니다. `[CsvIgnore]` 로 제외합니다.
+  문자열·정수·실수·bool·열거형·Vector2/3/4·Color·오브젝트 참조와 그 배열/리스트를 다룹니다.
+- **역방향 내보내기** — `Tools ▸ CSV Pipeline ▸ ScriptableObject를 표로 내보내기`.
+  `[CsvAsset]` 으로 선언된 타입만 됩니다. 바뀐 파일을 먼저 보여 주고 확인해야 씁니다.
+- **비공개 구글 시트** — 서비스 계정 키(JSON)로 액세스 토큰을 받아 붙입니다.
+  브라우저 로그인 흐름이 없어 배치 모드에서도 됩니다. 키 내용은 로그에 싣지 않습니다.
+- **TSV 지원** — `.tsv` / `.tab` 을 함께 다룹니다. 구분자는 확장자로 정합니다.
+  Unity가 `.tsv` 를 TextAsset으로 임포트하지 않으므로 디스크에서 직접 읽는 폴백을 두었습니다.
+- **임포트 결과 리포트** — 표마다 한 줄의 로그로 생성·갱신·건너뜀·삭제·보존 건수를 냅니다.
+  문제는 원본 줄 번호와 열 이름을 달고 나오며, 로그를 클릭하면 원본 표나 문제가 난 에셋으로 갑니다.
+- **열 존재 검증** — 요구한 열이 없으면 **아무것도 반영하지 않고** 오류로 보고합니다.
+  빠진 열을 빈 셀로 취급해 조용히 기본값을 굽던 자리를 막습니다.
+  대소문자만 다른 열이 있으면 오타로 보고 함께 알립니다.
+- `CsvTable` — 행뿐 아니라 헤더를 함께 들고 있는 표. 열 검증의 근거입니다.
+- `CsvRow.LineNumber` · `HasColumn` · `SplitList` · `LooksLikeList`.
+
+### Changed
+
+- `CsvImportDefinition.Process` 가 `IReadOnlyList<CsvRow>` 대신 `CsvTable` 과 `CsvImportReport` 를 받습니다.
+  베이스 넷을 상속한 코드는 `Bake`/`GetId` 만 구현하므로 영향이 없습니다.
+- `CsvAssetPipeline.Reconcile*` 이 리포트에 삭제·보존 건수를 기록합니다.
+- `CsvAssetPipeline.FindCsvPath` 가 TextAsset 검색에 실패하면 CSV 루트를 직접 훑습니다. (`.tsv` 때문)
+
 ## [0.1.1] - 2026-08-09
 
 ### Added

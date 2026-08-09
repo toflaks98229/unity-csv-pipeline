@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.IO;
 using UnityEditor;
 using UnityEngine;
 
@@ -45,17 +47,22 @@ namespace CsvPipeline
                 return -1;
             }
 
-            string[] guids = AssetDatabase.FindAssets("t:TextAsset", new[] { csvRoot });
+            // Unity가 .tsv 를 TextAsset으로 임포트하지 않으므로 에셋 검색이 아니라 디스크를 훑습니다.
+            var paths = new List<string>();
+            foreach (string file in Directory.EnumerateFiles(csvRoot, "*.*", SearchOption.AllDirectories))
+            {
+                string path = file.Replace('\\', '/');
+                if (CsvImportUtil.IsTableFile(path)) paths.Add(path);
+            }
+            paths.Sort(StringComparer.Ordinal);
+
             int count = 0;
 
             AssetDatabase.StartAssetEditing();
             try
             {
-                foreach (string guid in guids)
+                foreach (string path in paths)
                 {
-                    string path = AssetDatabase.GUIDToAssetPath(guid);
-                    if (!path.EndsWith(".csv", StringComparison.OrdinalIgnoreCase)) continue;
-
                     // ForceUpdate 재임포트 → 각 임포터의 OnPostprocessAllAssets가 이 경로를 처리
                     AssetDatabase.ImportAsset(path, ImportAssetOptions.ForceUpdate);
                     count++;

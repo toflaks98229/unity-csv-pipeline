@@ -36,10 +36,10 @@ namespace CsvPipeline
         /// <returns>에셋 경로입니다.</returns>
         protected virtual string AssetPathFor(string groupId) => $"{OutputFolder}/{groupId}.asset";
 
-        /// <summary>행들을 식별자로 묶어 그룹마다 에셋을 굽고, CSV에서 사라진 산출물을 정리합니다.</summary>
-        /// <param name="rows">파싱된 CSV 행들입니다.</param>
-        /// <returns>에셋을 하나라도 건드렸으면 true입니다.</returns>
-        protected override bool Process(IReadOnlyList<CsvRow> rows)
+        /// <summary>행들을 식별자로 묶어 그룹마다 에셋을 굽고, 표에서 사라진 산출물을 정리합니다.</summary>
+        /// <param name="table">파싱된 표입니다.</param>
+        /// <param name="report">건수와 문제를 기록할 리포트입니다.</param>
+        protected override void Process(CsvTable table, CsvImportReport report)
         {
             string folder = OutputFolder;
             CsvAssetPipeline.EnsureFolder(folder);
@@ -47,10 +47,15 @@ namespace CsvPipeline
             var groups = new Dictionary<string, List<CsvRow>>();
             var order = new List<string>();
 
-            foreach (CsvRow row in rows)
+            foreach (CsvRow row in table.Rows)
             {
                 string id = GetGroupId(row);
-                if (string.IsNullOrEmpty(id)) continue;
+                if (string.IsNullOrEmpty(id))
+                {
+                    report.CountSkipped();
+                    report.Warn("그룹 식별자가 비어 있어 건너뜁니다.", row.LineNumber);
+                    continue;
+                }
 
                 if (!groups.TryGetValue(id, out List<CsvRow> bucket))
                 {
@@ -64,16 +69,23 @@ namespace CsvPipeline
             var validNames = new HashSet<string>();
             foreach (string id in order)
             {
-                T asset = CsvAssetPipeline.CreateOrLoad<T>(AssetPathFor(id));
-                if (asset == null) continue;
+                T asset = CsvAssetPipeline.CreateOrLoad<T>(AssetPathFor(id), out bool created);
+                if (asset == null)
+                {
+                    report.CountSkipped();
+                    continue;
+                }
 
                 Bake(id, groups[id], asset);
                 EditorUtility.SetDirty(asset);
+
+                if (created) report.CountCreated();
+                else report.CountUpdated();
+
                 validNames.Add(id);
             }
 
-            CsvAssetPipeline.ReconcileFolderByName(folder, TypeFilter, validNames, LogTag);
-            return true;
+            CsvAssetPipeline.ReconcileFolderByName(folder, TypeFilter, validNames, LogTag, report);
         }
     }
 }
