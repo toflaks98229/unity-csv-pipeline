@@ -6,7 +6,7 @@
 **에디터 전용**입니다. 런타임 어셈블리가 없어 빌드에는 구워진 에셋만 들어갑니다.
 
 ```csharp
-[CsvAsset("Clues.csv", "Assets/Data/Clues", "ClueId")]
+[CsvAsset("Clues.csv", "ClueId", OutputFolder = "Assets/Data/Clues")]
 public class ClueData : ScriptableObject
 {
     public string title;
@@ -15,6 +15,8 @@ public class ClueData : ScriptableObject
 ```
 
 이게 전부입니다. `Clues.csv`를 저장하면 행마다 `ClueData` 에셋이 생기고 갱신됩니다.
+
+> 동작하는 예제가 패키지에 들어 있습니다. **Package Manager ▸ CSV Pipeline ▸ Samples ▸ Quick Start**
 
 ---
 
@@ -91,7 +93,7 @@ GIT_TERMINAL_PROMPT=0 git ls-remote https://github.com/toflaks98229/unity-csv-pi
 `[CsvAsset]` 을 ScriptableObject에 붙이면 끝입니다. 임포터를 따로 쓰지 않습니다.
 
 ```csharp
-[CsvAsset("Vehicles.csv", "Assets/Data/Vehicles", "Id")]
+[CsvAsset("Vehicles.csv", "Id", OutputFolder = "Assets/Data/Vehicles")]
 public class VehicleData : ScriptableObject
 {
     public float maxSpeed;          // ← MaxSpeed 열 (대소문자 무시)
@@ -102,6 +104,12 @@ public class VehicleData : ScriptableObject
 
 필드 이름과 열 이름을 **대소문자를 무시하고** 맞춥니다. `maxSpeed` 필드가 `MaxSpeed` 열에 붙습니다.
 표에 대응 열이 없는 필드는 건드리지 않습니다.
+
+**값이 정수로 보여도 필드가 실수면 실수입니다.** `MaxSpeed` 열의 `30` 은 `float` 로 들어갑니다.
+값만 보고 타입을 정하는 도구가 가장 많이 틀리는 자리인데, 여기서는 필드가 기준이라 어긋나지 않습니다.
+
+`OutputFolder` 를 비우면 산출물이 **원본 표 옆의 타입 이름 폴더**에 놓입니다.
+설치 위치를 미리 알 수 없는 배포용 예제에 씁니다. 보통은 위처럼 적어 두는 편이 낫습니다.
 
 ### 이름이 다르거나 동작을 바꿔야 할 때
 

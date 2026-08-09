@@ -1,6 +1,6 @@
 {
   "name": "com.toflaks.csv-pipeline",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "displayName": "CSV Pipeline",
   "description": "Bakes CSV rows into ScriptableObject assets on import, and optionally pulls those CSVs from Google Sheets. Editor-only; never included in player builds.",
   "unity": "2021.3",
@@ -18,5 +18,12 @@
     "name": "toflaks98229",
     "url": "https://github.com/toflaks98229"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "samples": [
+    {
+      "displayName": "Quick Start",
+      "description": "표 한 장이 ScriptableObject 에셋이 되는 최소 예제입니다. 임포터 코드가 없습니다.",
+      "path": "Samples~/QuickStart"
+    }
+  ]
 }

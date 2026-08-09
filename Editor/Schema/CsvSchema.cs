@@ -44,6 +44,24 @@ namespace CsvPipeline
         /// <summary>열 ↔ 필드 연결 목록입니다. 표에 적힌 순서가 아니라 필드 선언 순서입니다.</summary>
         public List<CsvBinding> Bindings { get; } = new List<CsvBinding>();
 
+        /// <summary>
+        /// 산출물이 놓일 폴더를 정합니다.
+        /// 선언에 적혀 있으면 그것을 쓰고, 비어 있으면 <b>원본 표 옆의 타입 이름 폴더</b>입니다.
+        /// </summary>
+        /// <param name="csvPath">원본 표의 에셋 경로입니다. null이면 파일 이름으로 찾습니다.</param>
+        /// <returns>산출물 폴더 경로이거나, 표를 찾지 못했으면 null입니다.</returns>
+        public string ResolveOutputFolder(string csvPath = null)
+        {
+            string declared = Declaration.OutputFolder;
+            if (!string.IsNullOrWhiteSpace(declared)) return declared.TrimEnd('/');
+
+            string path = csvPath ?? CsvAssetPipeline.FindCsvPath(Declaration.FileName);
+            if (string.IsNullOrEmpty(path)) return null;
+
+            string folder = System.IO.Path.GetDirectoryName(path)?.Replace('\\', '/');
+            return string.IsNullOrEmpty(folder) ? null : $"{folder}/{AssetType.Name}";
+        }
+
         /// <summary>반드시 있어야 하는 열들입니다. 식별자 열은 항상 포함합니다.</summary>
         public IEnumerable<string> RequiredColumns
         {
@@ -85,10 +103,7 @@ namespace CsvPipeline
                     if (type == null || type.IsAbstract) continue;
                     if (!typeof(ScriptableObject).IsAssignableFrom(type)) continue;
 
-                    var declaration = (CsvAssetAttribute)Attribute.GetCustomAttribute(type, typeof(CsvAssetAttribute));
-                    if (declaration == null) continue;
-
-                    CsvSchema schema = Build(type, declaration);
+                    CsvSchema schema = For(type);
                     if (schema != null) found.Add(schema);
                 }
             }
@@ -102,20 +117,31 @@ namespace CsvPipeline
         public static void InvalidateCache() => _cached = null;
 
         /// <summary>
-        /// 타입 하나에서 스키마를 만듭니다. 선언이 불완전하면 경고 후 null입니다.
+        /// 타입 하나의 스키마를 만듭니다. <see cref="CsvAssetAttribute"/>가 없거나 선언이 불완전하면 null입니다.
+        /// </summary>
+        /// <param name="type">대상 ScriptableObject 타입입니다.</param>
+        /// <returns>만들어진 스키마이거나 null입니다.</returns>
+        public static CsvSchema For(Type type)
+        {
+            if (type == null) return null;
+
+            var declaration = (CsvAssetAttribute)Attribute.GetCustomAttribute(type, typeof(CsvAssetAttribute));
+            return declaration == null ? null : Build(type, declaration);
+        }
+
+        /// <summary>
+        /// 타입과 선언에서 스키마를 만듭니다. 선언이 불완전하면 경고 후 null입니다.
         /// </summary>
         /// <param name="type">대상 ScriptableObject 타입입니다.</param>
         /// <param name="declaration">타입에 붙은 선언입니다.</param>
         /// <returns>만들어진 스키마이거나 null입니다.</returns>
         private static CsvSchema Build(Type type, CsvAssetAttribute declaration)
         {
-            if (string.IsNullOrEmpty(declaration.FileName)
-             || string.IsNullOrEmpty(declaration.OutputFolder)
-             || string.IsNullOrEmpty(declaration.IdColumn))
+            if (string.IsNullOrEmpty(declaration.FileName) || string.IsNullOrEmpty(declaration.IdColumn))
             {
                 Debug.LogWarning(
                     $"[CsvPipeline] {type.Name}의 [CsvAsset] 선언이 비어 있습니다. "
-                    + "fileName·outputFolder·idColumn을 모두 지정하십시오.");
+                    + "fileName과 idColumn을 모두 지정하십시오.");
                 return null;
             }
 

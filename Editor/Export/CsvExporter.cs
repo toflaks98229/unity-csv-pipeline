@@ -105,10 +105,15 @@ namespace CsvPipeline
         public static string Build(CsvSchema schema, out int rowCount)
         {
             rowCount = 0;
-            string folder = schema.Declaration.OutputFolder;
-            if (!AssetDatabase.IsValidFolder(folder)) return null;
+            string folder = schema.ResolveOutputFolder();
+            if (string.IsNullOrEmpty(folder) || !AssetDatabase.IsValidFolder(folder)) return null;
 
-            List<string> headers = BuildHeaders(schema);
+            // 원본이 있으면 그 헤더 표기를 그대로 씁니다. 그러지 않으면 MaxSpeed 가 maxSpeed 로 바뀌어
+            // 내용이 같아도 매번 "다름"으로 잡히고, 시트와 헤더가 어긋나 동기화가 멈춥니다.
+            string sourcePath = CsvAssetPipeline.FindCsvPath(schema.Declaration.FileName);
+            CsvTable source = sourcePath == null ? null : CsvImportUtil.ReadTable(sourcePath);
+
+            List<string> headers = BuildHeaders(schema, source);
             var writer = new CsvWriter(CsvReader.DelimiterForPath(schema.Declaration.FileName));
             writer.WriteRow(headers);
 
@@ -145,16 +150,26 @@ namespace CsvPipeline
 
         /// <summary>식별자 열을 맨 앞에 두고 나머지 열을 이어 붙인 헤더입니다.</summary>
         /// <param name="schema">대상 스키마입니다.</param>
+        /// <param name="source">원본 표입니다. 있으면 그 헤더 표기를 씁니다.</param>
         /// <returns>헤더 목록입니다.</returns>
-        private static List<string> BuildHeaders(CsvSchema schema)
+        private static List<string> BuildHeaders(CsvSchema schema, CsvTable source)
         {
-            var headers = new List<string> { schema.Declaration.IdColumn };
+            var headers = new List<string> { Spelling(schema.Declaration.IdColumn, source) };
+
             foreach (CsvBinding binding in schema.Bindings)
             {
-                if (!string.Equals(binding.Column, schema.Declaration.IdColumn, StringComparison.OrdinalIgnoreCase)) headers.Add(binding.Column);
+                if (string.Equals(binding.Column, schema.Declaration.IdColumn, StringComparison.OrdinalIgnoreCase)) continue;
+                headers.Add(Spelling(binding.Column, source));
             }
             return headers;
         }
+
+        /// <summary>원본 표에 적힌 표기를 쓰고, 없으면 선언된 이름을 그대로 씁니다.</summary>
+        /// <param name="column">열 이름입니다.</param>
+        /// <param name="source">원본 표입니다.</param>
+        /// <returns>쓸 헤더 표기입니다.</returns>
+        private static string Spelling(string column, CsvTable source)
+            => source?.ResolveHeader(column) ?? column;
 
         /// <summary>프로퍼티 값을 셀 문자열로 되돌립니다. 임포트 시의 해석과 짝이 맞아야 합니다.</summary>
         /// <param name="property">읽을 프로퍼티입니다.</param>

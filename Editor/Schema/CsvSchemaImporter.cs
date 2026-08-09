@@ -16,7 +16,7 @@ namespace CsvPipeline
         public CsvSchemaImportDefinition(CsvSchema schema) { _schema = schema; }
 
         protected override string FileName => _schema.Declaration.FileName;
-        protected override string OutputFolder => _schema.Declaration.OutputFolder;
+        protected override string OutputFolder => _schema.ResolveOutputFolder();
         protected override IEnumerable<string> RequiredColumns => _schema.RequiredColumns;
         protected override string LogTag => $"[{_schema.AssetType.Name}]";
 
@@ -25,8 +25,15 @@ namespace CsvPipeline
         /// <param name="report">건수와 문제를 기록할 리포트입니다.</param>
         protected override void Process(CsvTable table, CsvImportReport report)
         {
-            string folder = _schema.Declaration.OutputFolder;
+            string folder = _schema.ResolveOutputFolder();
             string idColumn = _schema.Declaration.IdColumn;
+
+            if (string.IsNullOrEmpty(folder))
+            {
+                report.Error("산출물 폴더를 정하지 못했습니다. [CsvAsset]의 OutputFolder를 지정하십시오.");
+                return;
+            }
+
             CsvAssetPipeline.EnsureFolder(folder);
 
             var binder = new CsvValueBinder();

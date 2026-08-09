@@ -11,23 +11,25 @@ namespace CsvPipeline
     {
         /// <summary>표와 산출물의 연결을 선언합니다.</summary>
         /// <param name="fileName">원본 표의 파일 이름입니다. (확장자 포함, 예: Clues.csv)</param>
-        /// <param name="outputFolder">산출물이 놓일 폴더입니다. (예: Assets/Data/Clues)</param>
         /// <param name="idColumn">에셋 이름이 될 열입니다. 이 열이 비면 그 행은 건너뜁니다.</param>
-        public CsvAssetAttribute(string fileName, string outputFolder, string idColumn)
+        public CsvAssetAttribute(string fileName, string idColumn)
         {
             FileName = fileName;
-            OutputFolder = outputFolder;
             IdColumn = idColumn;
         }
 
         /// <summary>원본 표의 파일 이름입니다.</summary>
         public string FileName { get; }
 
-        /// <summary>산출물이 놓일 폴더입니다.</summary>
-        public string OutputFolder { get; }
-
         /// <summary>에셋 이름이 될 열입니다.</summary>
         public string IdColumn { get; }
+
+        /// <summary>
+        /// 산출물이 놓일 폴더입니다. (예: <c>Assets/Data/Clues</c>)
+        /// 비우면 <b>원본 표 옆의 타입 이름 폴더</b>에 놓습니다. 표를 통째로 옮겨도 따라가므로
+        /// 배포하는 예제처럼 설치 위치를 알 수 없는 경우에 씁니다.
+        /// </summary>
+        public string OutputFolder { get; set; }
 
         /// <summary>
         /// 직렬화되는 필드를 열 이름으로 자동 연결할지 여부입니다. 기본은 켜짐입니다.

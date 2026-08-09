@@ -5,9 +5,13 @@
 각 항목의 **근거**를 표시합니다. `측정` = 이 저장소에서 실제로 돌려 본 것,
 `인용` = Unity 공식 문서·스토어 페이지에서 확인한 것, `판단` = 조사에 기반한 내 의견입니다.
 
-> **진행 상황 (v0.2.0 기준)** — §5의 기능 격차 **F1~F6은 전부 해소**했습니다.
+> **진행 상황 (v0.3.0 기준)** — §5의 기능 격차 **F1~F6 전부**, 제출 요건 **B3(샘플)**,
+> 위험 **R4(테스트·샘플 부재)** 를 해소했습니다.
 > 아래 본문은 조사 시점(v0.1.1)의 기록이며, 해소된 항목에는 ✅ 를 붙였습니다.
-> **남은 것은 §2-2의 제출 요건 3건(B1~B3)과 §2-3의 위험 4건(R1~R4), 그리고 §6의 UI/UX 격차입니다.**
+>
+> **남은 것**: 제출 요건 **B1**(최소 Unity 2022.3)·**B2**(영문 문서),
+> 위험 **R1**(Domain Reload 정적 상태)·**R2**(상시 콜백)·**R3**(네트워크 고지),
+> 그리고 §6의 UI/UX 격차 U1~U7.
 
 ---
 
@@ -29,8 +33,8 @@
 | 컴파일러 경고 | **0개** (`NoWarn` 해제 후 빌드) | 측정 |
 | 컴파일러 오류 | **0개** (게임 어셈블리 참조 없이 단독 빌드) | 측정 |
 | 최장 경로 길이 | 51자 (제한 150자) | 측정 |
-| 자동화 테스트 | **0개** | 측정 |
-| 샘플/데모 | **없음** | 측정 |
+| 자동화 테스트 | ~~0개~~ → **EditMode 60여 건** (v0.3.0) | 측정 |
+| 샘플/데모 | ~~없음~~ → **Samples~/QuickStart** (v0.3.0) | 측정 |
 | 사용자에게 보이는 문자열 | 50곳 중 **33곳이 한국어** | 측정 |
 | 한국어가 든 소스 파일 | **17 / 17** (전부) | 측정 |
 | `package.json`의 최소 Unity | `2021.3` | 측정 |
@@ -61,7 +65,7 @@ Unity [Submission Guidelines](https://assetstore.unity.com/publishing/submission
 |---|---|---|---|
 | **B1** | 신규 제출은 **Unity 2022.3 이상** | `2021.3` | 인용 |
 | **B2** | 코드·설정이 있는 패키지는 **문서 필수, "comprehensive"** | README는 있으나 **전부 한국어** | 인용 + 측정 |
-| **B3** | 외부 에셋을 다루는 도구는 **데모용 샘플 에셋 포함** | 없음 | 인용 + 측정 |
+| ✅ **B3** | 외부 에셋을 다루는 도구는 **데모용 샘플 에셋 포함** | ~~없음~~ → Samples~/QuickStart | 인용 + 측정 |
 
 > B3의 원문은 "Tools that manipulate external assets must include sample assets for demonstration"입니다.
 > 이 패키지는 CSV(외부 파일)를 읽어 에셋을 만드는 도구이므로 정면으로 해당합니다.
@@ -73,7 +77,7 @@ Unity [Submission Guidelines](https://assetstore.unity.com/publishing/submission
 | **R1** | **Domain Reload 비활성 지원** (Unity 6.6+ 요구) | 가변 정적 3개: `CsvPipelineSettings._cached`, `GoogleSheetSync._running`, `_nextAutoPullTime`. 특히 `_running`이 참인 채로 남으면 **동기화가 영영 안 돕니다** | 인용 + 측정 |
 | **R2** | 상시 에디터 콜백 | `[InitializeOnLoadMethod]`가 연동 설정이 하나도 없어도 `EditorApplication.update`를 무조건 겁니다. 30초마다 `AssetDatabase.FindAssets` | 측정 |
 | **R3** | 네트워크 사용 고지 | 구글 시트로 나가는 외부 요청이 있습니다. 자동 받기 기본값이 꺼짐(`autoPull = false`)인 점은 유리 | 측정 |
-| **R4** | 전문적 완성도 심사 | 테스트 0개·샘플 0개·에디터 창 없음. "professionally designed and constructed" 조항의 재량 판단 대상 | 인용 + 판단 |
+| ✅ **R4** | 전문적 완성도 심사 | 테스트·샘플은 갖췄습니다. **에디터 창은 여전히 없습니다**(§6 U2) | 인용 + 판단 |
 
 ---
 
@@ -201,12 +205,12 @@ public sealed class ClueImporter : AssetPostprocessor
 |---|---|
 | `package.json`의 `unity`를 `2022.3`으로 | B1 |
 | **모든 사용자 문자열·XML 주석·README를 영문화** (17파일 / 33개소) | B2 |
-| `Samples~/` 에 예제 CSV + 예제 SO + 예제 임포터 | B3 |
 | `Documentation~/` 에 영문 사용 문서 | B2 |
+| ~~`Samples~/` 에 예제~~ ✅ 완료 | B3 |
+| ~~EditMode 테스트~~ ✅ 완료 | R4 |
 | `_running` 등 정적 상태를 Domain Reload 비활성에서 점검 | R1 |
 | 연동 설정이 없으면 `EditorApplication.update` 구독 해제 | R2 |
 | 네트워크 사용을 설명란에 명시 | R3 |
-| EditMode 테스트 — 최소한 `CsvReader` 파서(따옴표·개행·BOM·CRLF) | R4 |
 
 > **영문화가 이 단계의 대부분입니다.** 17개 파일 전부에 한국어가 있어 기계적 치환으로 끝나지 않습니다.
 > 한국어 원문을 유지하고 싶다면 주석만 영문화하고 별도 한국어 문서를 병기하는 방법이 있습니다.

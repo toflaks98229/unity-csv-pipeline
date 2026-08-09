@@ -56,6 +56,23 @@ namespace CsvPipeline
         }
 
         /// <summary>
+        /// 표에 적힌 그대로의 열 이름을 돌려줍니다. 대소문자가 달라도 찾습니다.
+        /// 내보낼 때 사람이 적어 둔 표기(<c>MaxSpeed</c>)를 필드 이름(<c>maxSpeed</c>)으로 바꿔 버리지 않으려고 씁니다.
+        /// </summary>
+        /// <param name="column">찾을 열 이름입니다.</param>
+        /// <returns>표에 적힌 이름이거나, 없으면 null입니다.</returns>
+        public string ResolveHeader(string column)
+        {
+            if (string.IsNullOrEmpty(column)) return null;
+
+            for (int i = 0; i < Headers.Count; i++)
+            {
+                if (string.Equals(Headers[i], column, StringComparison.OrdinalIgnoreCase)) return Headers[i];
+            }
+            return null;
+        }
+
+        /// <summary>
         /// 이름이 거의 같은 열을 찾습니다. 오타 안내에 씁니다.
         /// 대소문자는 이미 <see cref="HasColumn"/>이 흡수하므로, 여기서는 공백·밑줄·하이픈 차이를 봅니다.
         /// </summary>

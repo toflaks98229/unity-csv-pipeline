@@ -1,0 +1,5 @@
+Id,Title,Description,RecommendedLevel,TimeLimit,Repeatable,Difficulty,Rewards,Requires
+Quest_FirstSteps,첫걸음,"마을을 둘러보고, 촌장에게 돌아간다.",1,600,FALSE,Easy,Item_Bread;Item_Coin,
+Quest_LostCat,잃어버린 고양이,"뒷골목 어딘가에 숨어 있다. 서두르지 않아도 된다.",2,0,TRUE,Easy,Item_Coin,Quest_FirstSteps
+Quest_DeepWell,깊은 우물,"바닥에서 무언가 움직인다. 등불을 챙길 것.",7,900,FALSE,Normal,Item_Rope;Item_Lantern;Item_Coin,Quest_LostCat
+Quest_NightWatch,야간 경비,"해가 진 뒤에만 시작할 수 있다.",12,1800,TRUE,Hard,Item_Sword,Quest_DeepWell
