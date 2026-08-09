@@ -1,0 +1,9 @@
+# 소스와 meta는 어느 OS에서 받아도 같은 바이트가 되도록 LF로 고정합니다.
+# meta의 줄 끝이 흔들리면 Unity가 매번 다시 쓰면서 잡음 커밋이 쌓입니다.
+* text=auto eol=lf
+
+*.cs      text eol=lf diff=csharp
+*.meta    text eol=lf
+*.asmdef  text eol=lf
+*.json    text eol=lf
+*.md      text eol=lf
