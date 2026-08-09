@@ -14,6 +14,12 @@ namespace CsvPipeline
         /// <summary>로그 접두 태그입니다.</summary>
         private const string TAG = "[CsvRebuild]";
 
+        /// <summary>
+        /// 전체 재빌드가 끝난 뒤 불립니다. 구운 에셋을 모아 카탈로그를 다시 채우는 등,
+        /// 임포터 하나로는 할 수 없는 프로젝트별 마무리 작업을 붙이는 자리입니다.
+        /// </summary>
+        public static event Action AfterRebuildAll;
+
         /// <summary>CSV 루트의 모든 CSV를 강제 재임포트합니다.</summary>
         [MenuItem("Tools/CSV Pipeline/Rebuild All Data")]
         public static void RebuildAllMenu()
@@ -61,6 +67,10 @@ namespace CsvPipeline
             }
 
             AssetDatabase.Refresh();
+
+            // 재임포트로 새 에셋이 생겼을 수 있으므로 프로젝트별 마무리 작업에 알립니다.
+            AfterRebuildAll?.Invoke();
+
             return count;
         }
     }

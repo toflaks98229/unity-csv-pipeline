@@ -50,24 +50,28 @@ namespace CsvPipeline
             return true;
         }
 
-        /// <summary>프로젝트에서 대상 에셋 하나를 찾습니다. 없거나 여럿이면 경고 후 처리하지 않습니다.</summary>
+        /// <summary>프로젝트에서 대상 에셋을 찾습니다. 없으면 경고 후 null입니다.</summary>
         /// <returns>찾은 에셋이거나 null입니다.</returns>
         private T FindSingle()
         {
-            string[] guids = AssetDatabase.FindAssets(TypeFilter);
-            var found = new List<T>();
-
-            foreach (string guid in guids)
+            var paths = new List<string>();
+            foreach (string guid in AssetDatabase.FindAssets(TypeFilter))
             {
-                var asset = AssetDatabase.LoadAssetAtPath<T>(AssetDatabase.GUIDToAssetPath(guid));
+                paths.Add(AssetDatabase.GUIDToAssetPath(guid));
+            }
+            // FindAssets의 순서는 보장되지 않습니다. 여럿일 때 매번 다른 에셋을 갱신하지 않도록 경로로 고정합니다.
+            paths.Sort(System.StringComparer.Ordinal);
+
+            var found = new List<T>();
+            foreach (string path in paths)
+            {
+                var asset = AssetDatabase.LoadAssetAtPath<T>(path);
                 if (asset != null) found.Add(asset);
             }
 
-            if (found.Count == 1) return found[0];
-
-            string hint = MissingAssetHint;
             if (found.Count == 0)
             {
+                string hint = MissingAssetHint;
                 Debug.LogWarning(
                     $"{LogTag} {typeof(T).Name} 에셋을 찾지 못해 표를 반영하지 못했습니다.\n"
                     + "이 표의 산출물은 프로젝트에 하나뿐인 에셋이라 임포터가 새로 만들지 않습니다."
@@ -75,11 +79,15 @@ namespace CsvPipeline
                 return null;
             }
 
-            // 여럿이면 어느 쪽을 갱신해도 나머지가 낡은 값으로 남아, 배선에 따라 결과가 갈립니다.
-            Debug.LogWarning(
-                $"{LogTag} {typeof(T).Name} 에셋이 {found.Count}개라 어느 것을 갱신할지 정할 수 없습니다.\n"
-                + "하나만 남기고 정리한 뒤 다시 임포트하십시오.");
-            return null;
+            if (found.Count > 1)
+            {
+                // 갱신되지 않은 쪽은 낡은 값으로 남아, 어느 것을 참조하느냐에 따라 결과가 갈립니다.
+                Debug.LogWarning(
+                    $"{LogTag} {typeof(T).Name} 에셋이 {found.Count}개 있습니다. 경로순 첫 번째만 갱신합니다.\n"
+                    + "이런 표는 게임 전역의 규칙이므로 하나만 두십시오.");
+            }
+
+            return found[0];
         }
     }
 }
