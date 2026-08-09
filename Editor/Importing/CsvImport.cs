@@ -1,4 +1,5 @@
 using System;
+using UnityEditor;
 
 namespace CsvPipeline
 {
@@ -9,6 +10,25 @@ namespace CsvPipeline
     {
         /// <summary>자동 임포트를 멈춘 <see cref="Suppress"/> 범위의 겹친 깊이입니다.</summary>
         private static int _suppressDepth;
+
+        /// <summary>
+        /// 멈춤 깊이가 남아 있지 않도록 편집 모드로 돌아올 때마다 풉니다.
+        /// Domain Reload를 끈 프로젝트에서는 정적 값이 살아남는데, 이 깊이가 0으로 돌아오지 못하면
+        /// <b>자동 임포트가 영영 멈춘 채</b>로 남고 사람은 이유를 알 수 없습니다.
+        /// </summary>
+        [InitializeOnLoadMethod]
+        private static void InstallSuppressionReset()
+        {
+            EditorApplication.playModeStateChanged -= ReleaseSuppressionOnEditMode;
+            EditorApplication.playModeStateChanged += ReleaseSuppressionOnEditMode;
+        }
+
+        /// <summary>편집 모드로 돌아오면 남은 멈춤 깊이를 풉니다.</summary>
+        /// <param name="change">플레이 모드 전이입니다.</param>
+        private static void ReleaseSuppressionOnEditMode(PlayModeStateChange change)
+        {
+            if (change == PlayModeStateChange.EnteredEditMode) _suppressDepth = 0;
+        }
 
         /// <summary>지금 자동 임포트가 멈춰 있는지 여부입니다.</summary>
         public static bool IsSuppressed => _suppressDepth > 0;

@@ -156,12 +156,27 @@ namespace CsvPipeline
         // 자동 받기
         // ====================================================================================================
 
-        /// <summary>에디터 기동 시 자동 받기 루프를 겁니다.</summary>
+        /// <summary>지금 자동 받기 루프가 걸려 있는지 여부입니다.</summary>
+        private static bool _hooked;
+
+        /// <summary>
+        /// 에디터 기동 시 자동 받기 루프를 겁니다.
+        /// <b>연동 설정이 하나도 없으면 걸지 않습니다.</b> 이 기능을 쓰지 않는 프로젝트에까지
+        /// 매 프레임 콜백을 남겨 둘 이유가 없습니다.
+        /// </summary>
         [InitializeOnLoadMethod]
-        private static void InstallAutoPull()
+        private static void InstallAutoPull() => RefreshAutoPullHook();
+
+        /// <summary>연동 설정의 존재 여부에 맞춰 자동 받기 루프를 걸거나 뗍니다.</summary>
+        internal static void RefreshAutoPullHook()
         {
-            EditorApplication.update -= AutoPullTick;
-            EditorApplication.update += AutoPullTick;
+            bool wanted = AssetDatabase.FindAssets($"t:{nameof(GoogleSheetSyncSettings)}").Length > 0;
+            if (wanted == _hooked) return;
+
+            if (wanted) EditorApplication.update += AutoPullTick;
+            else EditorApplication.update -= AutoPullTick;
+
+            _hooked = wanted;
         }
 
         /// <summary>자동 받기가 켜진 설정들을 간격마다 확인합니다.</summary>
@@ -170,10 +185,18 @@ namespace CsvPipeline
             if (_running || EditorApplication.isCompiling || EditorApplication.isUpdating) return;
             if (EditorApplication.timeSinceStartup < _nextAutoPullTime) return;
 
+            var all = FindAllSettings();
+            if (all.Count == 0)
+            {
+                // 설정이 전부 지워졌으면 루프를 뗍니다. 다시 생기면 임포트 통지가 걸어 줍니다.
+                RefreshAutoPullHook();
+                return;
+            }
+
             var due = new List<GoogleSheetSyncSettings>();
             float interval = 300f;
 
-            foreach (GoogleSheetSyncSettings s in FindAllSettings())
+            foreach (GoogleSheetSyncSettings s in all)
             {
                 if (!s.autoPull || !s.enabled || !s.IsConfigured) continue;
 
@@ -182,7 +205,7 @@ namespace CsvPipeline
             }
 
             // 대상이 없으면 다음 확인을 멀찍이 미뤄, 매 프레임 에셋을 뒤지지 않게 합니다.
-            _nextAutoPullTime = EditorApplication.timeSinceStartup + (due.Count > 0 ? interval : 30f);
+            _nextAutoPullTime = EditorApplication.timeSinceStartup + (due.Count > 0 ? interval : 300f);
             if (due.Count == 0) return;
 
             // 자동 경로에서는 대화상자를 띄우지 않습니다. 확인이 필요한 상황은 건너뛰고 로그만 남깁니다.

@@ -48,7 +48,7 @@ public class ClueData : ScriptableObject
 "com.toflaks.csv-pipeline": "https://github.com/toflaks98229/unity-csv-pipeline.git"
 ```
 
-버전을 고정하려면 `#v0.2.0` 처럼 태그를 붙입니다.
+버전을 고정하려면 `#v0.4.0` 처럼 태그를 붙입니다.
 서브모듈로 쓰려면 `Packages/com.toflaks.csv-pipeline` 경로에 두면 됩니다.
 
 ### ⚠️ 비공개 저장소라면 — 자격증명이 미리 있어야 합니다
