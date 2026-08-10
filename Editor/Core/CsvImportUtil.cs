@@ -2,8 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using UnityEditor;
-using UnityEngine;
 
 namespace CsvPipeline
 {
@@ -53,23 +51,7 @@ namespace CsvPipeline
         /// </summary>
         /// <param name="assetPath">읽을 에셋 경로입니다.</param>
         /// <returns>원문이거나, 읽지 못했으면 null입니다.</returns>
-        public static string ReadText(string assetPath)
-        {
-            if (string.IsNullOrEmpty(assetPath)) return null;
-
-            TextAsset asset = AssetDatabase.LoadAssetAtPath<TextAsset>(assetPath);
-            if (asset != null) return asset.text;
-
-            try
-            {
-                string full = Path.GetFullPath(assetPath);
-                return File.Exists(full) ? File.ReadAllText(full) : null;
-            }
-            catch (IOException)
-            {
-                return null;
-            }
-        }
+        public static string ReadText(string assetPath) => CsvAssets.Current.ReadText(assetPath);
 
         /// <summary>표 파일을 읽어 헤더까지 갖춘 표로 파싱합니다. 구분자는 확장자로 정합니다.</summary>
         /// <param name="assetPath">읽을 에셋 경로입니다.</param>

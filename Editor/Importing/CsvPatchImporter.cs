@@ -27,7 +27,7 @@ namespace CsvPipeline
         /// <param name="serialized">대상 에셋의 직렬화 객체입니다. 호출 뒤 자동으로 적용됩니다.</param>
         protected abstract void Patch(CsvRow row, T asset, SerializedObject serialized);
 
-        /// <summary>에셋 색인에 쓰는 AssetDatabase 검색 필터입니다.</summary>
+        /// <summary>에셋 색인에 쓰는 에셋 검색 필터입니다.</summary>
         protected virtual string TypeFilter => $"t:{typeof(T).Name}";
 
         /// <summary>키에 해당하는 에셋이 없을 때 경고에 덧붙일 안내입니다.</summary>
@@ -65,7 +65,7 @@ namespace CsvPipeline
                 var serialized = new SerializedObject(asset);
                 Patch(row, asset, serialized);
                 serialized.ApplyModifiedPropertiesWithoutUndo();
-                EditorUtility.SetDirty(asset);
+                CsvAssets.Current.MarkDirty(asset);
                 report.CountUpdated();
             }
         }
@@ -95,7 +95,7 @@ namespace CsvPipeline
                     continue;
                 }
 
-                plan.Add(CsvChangeKind.Update, AssetDatabase.GetAssetPath(asset), row.LineNumber);
+                plan.Add(CsvChangeKind.Update, CsvAssets.Current.PathOf(asset), row.LineNumber);
             }
         }
 
@@ -105,10 +105,9 @@ namespace CsvPipeline
         {
             var map = new Dictionary<string, T>();
 
-            foreach (string guid in AssetDatabase.FindAssets(TypeFilter))
+            foreach (string path in CsvAssets.Current.FindPaths(TypeFilter))
             {
-                var asset = AssetDatabase.LoadAssetAtPath<T>(AssetDatabase.GUIDToAssetPath(guid));
-                if (asset == null) continue;
+                if (!(CsvAssets.Current.Load(path, typeof(T)) is T asset)) continue;
 
                 string key = GetAssetKey(asset);
                 if (!string.IsNullOrEmpty(key)) map[key] = asset;

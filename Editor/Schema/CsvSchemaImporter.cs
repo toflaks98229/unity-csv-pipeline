@@ -67,7 +67,7 @@ namespace CsvPipeline
                 var serialized = new SerializedObject(asset);
                 BakeRow(row, table, serialized, binder, report, asset);
                 serialized.ApplyModifiedPropertiesWithoutUndo();
-                EditorUtility.SetDirty(asset);
+                CsvAssets.Current.MarkDirty(asset);
                 CsvAssetPipeline.FlushIfCreated(asset, created);
 
                 if (created) report.CountCreated();
@@ -145,7 +145,7 @@ namespace CsvPipeline
                 validNames.Add(id);
                 string path = $"{folder}/{id}.asset";
 
-                var existing = AssetDatabase.LoadAssetAtPath(path, _schema.AssetType) as ScriptableObject;
+                var existing = CsvAssets.Current.Load(path, _schema.AssetType) as ScriptableObject;
                 if (existing == null)
                 {
                     plan.Add(CsvChangeKind.Create, path, row.LineNumber);

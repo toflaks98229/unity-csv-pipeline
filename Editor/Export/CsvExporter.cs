@@ -111,8 +111,10 @@ namespace CsvPipeline
         public static string Build(CsvSchema schema, out int rowCount)
         {
             rowCount = 0;
+            ICsvAssetGateway assets = CsvAssets.Current;
+
             string folder = schema.ResolveOutputFolder();
-            if (string.IsNullOrEmpty(folder) || !AssetDatabase.IsValidFolder(folder)) return null;
+            if (!assets.FolderExists(folder)) return null;
 
             // 원본이 있으면 그 헤더 표기를 그대로 씁니다. 그러지 않으면 MaxSpeed 가 maxSpeed 로 바뀌어
             // 내용이 같아도 매번 "다름"으로 잡히고, 시트와 헤더가 어긋나 동기화가 멈춥니다.
@@ -124,18 +126,13 @@ namespace CsvPipeline
             writer.WriteRow(headers);
 
             // 경로순으로 내보내야 매번 같은 파일이 나와 git 잡음이 생기지 않습니다.
-            var paths = new List<string>();
-            foreach (string guid in AssetDatabase.FindAssets($"t:{schema.AssetType.Name}", new[] { folder }))
-            {
-                paths.Add(AssetDatabase.GUIDToAssetPath(guid));
-            }
+            var paths = new List<string>(assets.FindPaths($"t:{schema.AssetType.Name}", folder));
             paths.Sort(StringComparer.Ordinal);
 
             var cells = new List<string>(headers.Count);
             foreach (string path in paths)
             {
-                var asset = AssetDatabase.LoadAssetAtPath(path, schema.AssetType) as ScriptableObject;
-                if (asset == null) continue;
+                if (!(assets.Load(path, schema.AssetType) is ScriptableObject asset)) continue;
 
                 var serialized = new SerializedObject(asset);
                 cells.Clear();
