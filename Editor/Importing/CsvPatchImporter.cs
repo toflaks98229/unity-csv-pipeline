@@ -40,8 +40,11 @@ namespace CsvPipeline
         {
             Dictionary<string, T> byKey = BuildIndex();
 
-            foreach (CsvRow row in table.Rows)
+            for (int i = 0; i < table.Rows.Count; i++)
             {
+                if (ReportRowProgress(i, table.Rows.Count)) break;
+
+                CsvRow row = table.Rows[i];
                 string key = GetRowKey(row);
                 if (string.IsNullOrEmpty(key))
                 {

@@ -67,8 +67,11 @@ namespace CsvPipeline
             }
 
             var validNames = new HashSet<string>();
-            foreach (string id in order)
+            for (int i = 0; i < order.Count; i++)
             {
+                if (ReportRowProgress(i, order.Count)) break;
+
+                string id = order[i];
                 T asset = CsvAssetPipeline.CreateOrLoad<T>(AssetPathFor(id), out bool created);
                 if (asset == null)
                 {
@@ -85,6 +88,9 @@ namespace CsvPipeline
 
                 validNames.Add(id);
             }
+
+            // 취소됐으면 아직 만들지 않은 그룹이 남아 있어, 그 에셋을 사라진 것으로 오해할 수 있습니다.
+            if (IsCancelled) return;
 
             CsvAssetPipeline.ReconcileFolderByName(folder, TypeFilter, validNames, LogTag, report);
         }

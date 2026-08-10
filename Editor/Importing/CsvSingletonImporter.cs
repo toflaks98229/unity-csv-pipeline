@@ -37,9 +37,11 @@ namespace CsvPipeline
 
             var serialized = new SerializedObject(asset);
 
-            foreach (CsvRow row in table.Rows)
+            for (int i = 0; i < table.Rows.Count; i++)
             {
-                if (BakeRow(row, asset, serialized)) report.CountUpdated();
+                if (ReportRowProgress(i, table.Rows.Count)) break;
+
+                if (BakeRow(table.Rows[i], asset, serialized)) report.CountUpdated();
                 else report.CountSkipped();
             }
 

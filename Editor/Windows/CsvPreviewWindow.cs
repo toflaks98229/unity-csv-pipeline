@@ -74,7 +74,7 @@ namespace CsvPipeline
 
             if (_plans.Count == 0)
             {
-                EditorGUILayout.HelpBox("등록된 표가 없습니다.", MessageType.Info);
+                DrawGettingStarted();
                 return;
             }
 
@@ -95,6 +95,54 @@ namespace CsvPipeline
             }
 
             EditorGUILayout.EndScrollView();
+        }
+
+        /// <summary>
+        /// 표가 하나도 없을 때의 안내입니다. 설치 직후 이 창을 열면 여기부터 보게 되므로,
+        /// "없습니다"로 끝내지 않고 무엇을 해야 하는지까지 적습니다.
+        /// </summary>
+        private void DrawGettingStarted()
+        {
+            CsvPipelineSettings settings = CsvPipelineSettings.Instance;
+
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("아직 굽는 표가 없습니다", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField($"지금 보고 있는 CSV 루트: {settings.CsvRootFolder}", EditorStyles.miniLabel);
+
+            EditorGUILayout.Space();
+            EditorGUILayout.HelpBox(
+                "표를 붙이는 길은 둘입니다.\n\n"
+                + "① 코드 없이 — ScriptableObject에 [CsvAsset(\"표이름.csv\", \"Id열\")] 을 붙입니다.\n"
+                + "   필드 이름과 열 이름을 대소문자 무시로 맞춥니다.\n\n"
+                + "② 코드로 — 값의 의미가 다른 열에 따라 달라지는 표는 CsvRowImporter 같은\n"
+                + "   베이스를 상속해 행→에셋 매핑을 직접 적습니다.",
+                MessageType.None);
+
+            EditorGUILayout.Space();
+
+            if (!CsvPipelineSettings.ExistsInProject)
+            {
+                EditorGUILayout.HelpBox(
+                    "설정 에셋이 없어 기본값으로 동작합니다. 표가 다른 폴더에 있으면 여기서 지정하십시오.",
+                    MessageType.Info);
+            }
+
+            using (new EditorGUILayout.HorizontalScope())
+            {
+                if (GUILayout.Button("Project Settings 열기", GUILayout.Width(160)))
+                {
+                    SettingsService.OpenProjectSettings("Project/CSV Pipeline");
+                }
+
+                if (GUILayout.Button("Package Manager 열기 (샘플)", GUILayout.Width(200)))
+                {
+                    UnityEditor.PackageManager.UI.Window.Open("com.toflaks.csv-pipeline");
+                }
+            }
+
+            EditorGUILayout.LabelField(
+                "Package Manager의 Samples에서 Quick Start를 가져오면 동작하는 예제를 볼 수 있습니다.",
+                EditorStyles.miniLabel);
         }
 
         /// <summary>상단 도구 줄을 그립니다.</summary>

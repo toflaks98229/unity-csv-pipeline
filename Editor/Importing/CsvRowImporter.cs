@@ -61,8 +61,11 @@ namespace CsvPipeline
             var validNames = new HashSet<string>();
             var validPaths = new HashSet<string>();
 
-            foreach (CsvRow row in table.Rows)
+            for (int i = 0; i < table.Rows.Count; i++)
             {
+                if (ReportRowProgress(i, table.Rows.Count)) break;
+
+                CsvRow row = table.Rows[i];
                 string id = GetId(row);
                 if (string.IsNullOrEmpty(id))
                 {
@@ -92,6 +95,10 @@ namespace CsvPipeline
                 validNames.Add(id);
                 validPaths.Add(AssetDatabase.GetAssetPath(asset));
             }
+
+            // 취소됐으면 아직 읽지 않은 행이 남아 있습니다. 그 에셋들을 "표에서 사라진 것"으로
+            // 오해해 지우면 안 되므로 정리를 건너뜁니다.
+            if (IsCancelled) return;
 
             if (ReconcileByPath) CsvAssetPipeline.ReconcileFolderByPath(folder, TypeFilter, validPaths, LogTag, report);
             else CsvAssetPipeline.ReconcileFolderByName(folder, TypeFilter, validNames, LogTag, report);

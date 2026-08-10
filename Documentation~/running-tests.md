@@ -40,6 +40,21 @@ SB=/tmp/csvsandbox
 
 실패 내역은 `results.xml` 의 `<test-case result="Failed">` 에 메시지와 스택이 들어 있습니다.
 
+### 샌드박스가 썩으면 다시 만드십시오
+
+재사용하다 보면 샌드박스가 이상해집니다. 실제로 겪은 것들입니다.
+
+| 증상 | 실제 원인 |
+|---|---|
+| `Couldn't set project path to: <cwd>/<경로>` | `Assets` 폴더가 사라져 유효한 프로젝트로 인식되지 않음 |
+| `The type or namespace name 'NUnit' could not be found` | `manifest.json` 에 존재하지 않는 `file:` 의존성이 끼어 패키지 해석이 통째로 실패 |
+
+**둘 다 패키지 코드와 무관합니다.** 원인을 좇기 전에 `rm -rf` 후 다시 만들어 보십시오.
+재생성은 2~3분이면 끝나고, 그러고도 실패하면 그때가 진짜입니다.
+
+경로는 `cygpath -w` 로 Windows 형식으로 넘기십시오. Git Bash에서 그냥 넘기면 앞에 현재
+디렉터리가 붙어 버립니다.
+
 ## 3. 컴파일만 빠르게 보기
 
 Unity를 띄우지 않고 컴파일만 확인하려면, 에디터가 만들어 둔 `.csproj` 의 `<Reference>` 블록을

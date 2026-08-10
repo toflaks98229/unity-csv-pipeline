@@ -42,8 +42,11 @@ namespace CsvPipeline
             // 표에 없는 열에 연결된 필드는 매 행마다 경고할 필요가 없어 한 번만 알립니다.
             WarnUnmatchedColumns(table, report);
 
-            foreach (CsvRow row in table.Rows)
+            for (int i = 0; i < table.Rows.Count; i++)
             {
+                if (ReportRowProgress(i, table.Rows.Count)) break;
+
+                CsvRow row = table.Rows[i];
                 string id = row.GetString(idColumn);
                 if (string.IsNullOrEmpty(id))
                 {
@@ -72,6 +75,9 @@ namespace CsvPipeline
 
                 validNames.Add(id);
             }
+
+            // 취소됐으면 아직 읽지 않은 행이 남아 있어, 그 에셋을 사라진 것으로 오해할 수 있습니다.
+            if (IsCancelled) return;
 
             if (_schema.Declaration.DeleteMissing)
             {

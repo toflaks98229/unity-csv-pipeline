@@ -88,6 +88,18 @@ namespace CsvPipeline
             _ = CompareAllAsync(ready);
         }
 
+        /// <summary>
+        /// 설정 하나만 시트와 비교해 결과를 콘솔에 보고합니다. <b>파일을 쓰지 않습니다.</b>
+        /// 인스펙터에서 "이 표만 비교"로 부릅니다.
+        /// </summary>
+        /// <param name="settings">비교할 설정입니다.</param>
+        public static void CompareOne(GoogleSheetSyncSettings settings)
+        {
+            if (settings == null || !settings.IsConfigured) return;
+
+            _ = CompareAllAsync(new List<GoogleSheetSyncSettings> { settings });
+        }
+
         /// <summary>설정 에셋 폴더를 프로젝트 창에서 선택합니다.</summary>
         [MenuItem("Tools/CSV Pipeline/Google Sheet 설정 폴더 열기")]
         public static void SelectSettingsFolderMenu()

@@ -71,6 +71,18 @@ namespace CsvPipeline
             Run(csvPath);
         }
 
+        /// <summary>진행 표시를 켜는 최소 행 수입니다. 작은 표에서는 그리는 값이 굽는 값보다 큽니다.</summary>
+        private const int ProgressThreshold = 200;
+
+        /// <summary>진행 막대를 띄운 적이 있는지 여부입니다. 띄웠으면 반드시 걷어야 합니다.</summary>
+        private bool _progressShown;
+
+        /// <summary>사람이 취소를 눌렀는지 여부입니다.</summary>
+        private bool _cancelled;
+
+        /// <summary>이번 굽기가 취소됐는지 여부입니다. 정리 단계는 이 값을 보고 건너뜁니다.</summary>
+        protected bool IsCancelled => _cancelled;
+
         /// <summary>
         /// 지정 경로의 표를 읽어 굽고 결과를 보고합니다. 메뉴에서 직접 부를 수도 있습니다.
         /// </summary>
@@ -89,11 +101,50 @@ namespace CsvPipeline
                 return report;
             }
 
-            Process(table, report);
+            _progressShown = false;
+            _cancelled = false;
+
+            try
+            {
+                Process(table, report);
+            }
+            finally
+            {
+                if (_progressShown) EditorUtility.ClearProgressBar();
+            }
+
+            if (_cancelled)
+            {
+                report.Warn("취소되어 표의 일부만 반영했습니다. 사라진 행의 정리는 하지 않았습니다.");
+            }
+
             report.Emit();
 
             if (report.Touched) AssetDatabase.SaveAssets();
             return report;
+        }
+
+        /// <summary>
+        /// 행 처리 진행을 알리고 취소 여부를 돌려줍니다. 큰 표에서만 막대를 띄웁니다.
+        /// <b>true를 받으면 루프를 즉시 빠져나가고 정리 단계도 건너뛰어야 합니다.</b>
+        /// 아직 읽지 않은 행의 에셋을 "표에서 사라진 것"으로 오해해 지우면 안 되기 때문입니다.
+        /// </summary>
+        /// <param name="index">지금 처리할 행의 번호입니다. (0부터)</param>
+        /// <param name="total">전체 행 수입니다.</param>
+        /// <returns>취소됐으면 true입니다.</returns>
+        protected bool ReportRowProgress(int index, int total)
+        {
+            if (_cancelled) return true;
+            if (total < ProgressThreshold) return false;
+
+            // 매 행마다 그리면 그리는 데 드는 값이 굽는 값을 넘습니다.
+            if (index != 0 && (index & 31) != 0) return false;
+
+            _progressShown = true;
+            _cancelled = EditorUtility.DisplayCancelableProgressBar(
+                $"{FileName} 굽는 중", $"{index} / {total}행", (float)index / total);
+
+            return _cancelled;
         }
 
         /// <summary>
