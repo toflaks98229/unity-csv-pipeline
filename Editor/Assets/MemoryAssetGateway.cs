@@ -22,6 +22,13 @@ namespace CsvPipeline
         /// <summary><see cref="SaveAll"/>이 불린 횟수입니다.</summary>
         public int SaveCount { get; private set; }
 
+        /// <summary>
+        /// <see cref="FindPaths"/>가 불린 횟수입니다.
+        /// 실제 저장소에서 이것은 프로젝트 전체 검색이라, <b>그리기마다 부르면 창을 열어 둔 것만으로
+        /// 메모리가 계속 늘어납니다.</b> 그 사고를 한 번 겪어 세어 두게 했습니다.
+        /// </summary>
+        public int FindPathsCount { get; private set; }
+
         /// <summary>지금 들고 있는 에셋 경로들입니다.</summary>
         public IEnumerable<string> Paths => _assets.Keys;
 
@@ -61,6 +68,13 @@ namespace CsvPipeline
             asset.name = Path.GetFileNameWithoutExtension(path);
             WithAsset(path, asset);
             return asset;
+        }
+
+        /// <summary>세어 둔 호출 횟수를 0으로 되돌립니다. 준비 단계의 호출을 빼고 셀 때 씁니다.</summary>
+        public void ResetCounters()
+        {
+            SaveCount = 0;
+            FindPathsCount = 0;
         }
 
         /// <summary>경로의 에셋을 지정 타입으로 읽습니다. 검사에서 결과를 확인할 때 씁니다.</summary>
@@ -159,6 +173,8 @@ namespace CsvPipeline
         /// <returns>찾은 경로들입니다.</returns>
         public IReadOnlyList<string> FindPaths(string typeFilter, string folder = null)
         {
+            FindPathsCount++;
+
             string typeName = TypeNameOf(typeFilter);
             var paths = new List<string>();
 

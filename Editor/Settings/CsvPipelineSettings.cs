@@ -58,6 +58,9 @@ namespace CsvPipeline
         /// <summary>찾아 둔 설정 에셋입니다. 파괴됐거나 아직 찾지 않았으면 다시 조회합니다.</summary>
         private static CsvPipelineSettings _cached;
 
+        /// <summary>찾은 것이 프로젝트에 저장된 에셋이었는지 여부입니다.</summary>
+        private static bool _cachedExists;
+
         /// <summary>
         /// 프로젝트의 설정 에셋입니다. 없으면 기본값을 담은 임시 인스턴스를 돌려주므로 null이 아닙니다.
         /// </summary>
@@ -71,29 +74,44 @@ namespace CsvPipeline
             }
         }
 
-        /// <summary>프로젝트에 실제 설정 에셋이 저장돼 있는지 여부입니다.</summary>
-        public static bool ExistsInProject => FindAll().Count > 0;
+        /// <summary>
+        /// 프로젝트에 실제 설정 에셋이 저장돼 있는지 여부입니다.
+        /// <b>찾기는 한 번만 하고 결과를 들고 있습니다.</b> 이 값을 그리기에서 읽는 화면이 여럿인데,
+        /// 그때마다 프로젝트를 뒤지면 창을 열어 둔 것만으로 메모리가 계속 늘어납니다.
+        /// 설정 에셋이 생기거나 사라지면 <see cref="CsvPipelineSettingsHook"/>가 캐시를 버립니다.
+        /// </summary>
+        public static bool ExistsInProject
+        {
+            get
+            {
+                if (_cached == null) _cached = FindOrCreateTransient();
+                return _cachedExists;
+            }
+        }
 
         /// <summary>다음 조회에서 설정 에셋을 다시 찾도록 캐시를 버립니다.</summary>
-        public static void InvalidateCache() => _cached = null;
+        public static void InvalidateCache()
+        {
+            _cached = null;
+            _cachedExists = false;
+        }
 
         /// <summary>프로젝트의 설정 에셋을 모두 경로순으로 찾습니다.</summary>
         /// <returns>찾은 설정 에셋 목록입니다.</returns>
         public static List<CsvPipelineSettings> FindAll()
         {
             var found = new List<CsvPipelineSettings>();
-            var paths = new List<string>();
+            var paths = new List<string>(CsvAssets.Current.FindPaths($"t:{nameof(CsvPipelineSettings)}"));
 
-            foreach (string guid in AssetDatabase.FindAssets($"t:{nameof(CsvPipelineSettings)}"))
-            {
-                paths.Add(AssetDatabase.GUIDToAssetPath(guid));
-            }
+            // 검색 순서는 보장되지 않습니다. 여럿일 때 매번 다른 것을 고르지 않도록 경로로 고정합니다.
             paths.Sort(System.StringComparer.Ordinal);
 
             foreach (string path in paths)
             {
-                var settings = AssetDatabase.LoadAssetAtPath<CsvPipelineSettings>(path);
-                if (settings != null) found.Add(settings);
+                if (CsvAssets.Current.Load(path, typeof(CsvPipelineSettings)) is CsvPipelineSettings settings)
+                {
+                    found.Add(settings);
+                }
             }
             return found;
         }
@@ -113,7 +131,8 @@ namespace CsvPipeline
                     $"[CsvPipeline] 설정 에셋이 {found.Count}개 있습니다. 경로순 첫 번째"
                     + $"({AssetDatabase.GetAssetPath(found[0])})를 씁니다. 나머지는 지우십시오.");
             }
-            if (found.Count > 0) return found[0];
+            _cachedExists = found.Count > 0;
+            if (_cachedExists) return found[0];
 
             // 소비하는 프로젝트에 말없이 에셋을 만들지 않습니다. 기본값으로 도는 임시 인스턴스를 씁니다.
             var transientSettings = CreateInstance<CsvPipelineSettings>();
@@ -131,6 +150,7 @@ namespace CsvPipeline
             AssetDatabase.SaveAssets();
 
             _cached = created;
+            _cachedExists = true;
             return created;
         }
     }

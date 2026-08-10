@@ -33,8 +33,30 @@ namespace CsvPipeline
         /// <summary>토큰을 발급받은 키 파일 경로입니다. 키가 바뀌면 다시 받습니다.</summary>
         private static string _tokenKeyPath;
 
-        /// <summary>서비스 계정 키가 설정돼 있는지 여부입니다.</summary>
-        public static bool IsConfigured => !string.IsNullOrEmpty(ResolveKeyPath());
+        /// <summary>키가 있는지 마지막으로 확인한 결과입니다.</summary>
+        private static bool _keyPresent;
+
+        /// <summary>그 확인에 쓴 설정 경로입니다. 설정이 바뀌면 다시 확인합니다.</summary>
+        private static string _keyCheckedFor;
+
+        /// <summary>
+        /// 서비스 계정 키가 설정돼 있는지 여부입니다.
+        /// <b>디스크 확인 결과를 들고 있습니다.</b> 이 값을 그리기에서 읽는 화면이 있어,
+        /// 부를 때마다 파일을 찾으면 마우스를 움직이는 동안 계속 디스크를 두드립니다.
+        /// 설정의 경로가 바뀌면 그때 다시 봅니다.
+        /// </summary>
+        public static bool IsConfigured
+        {
+            get
+            {
+                string configured = CsvPipelineSettings.Instance.ServiceAccountKeyPath ?? string.Empty;
+                if (configured == _keyCheckedFor) return _keyPresent;
+
+                _keyCheckedFor = configured;
+                _keyPresent = !string.IsNullOrEmpty(ResolveKeyPath());
+                return _keyPresent;
+            }
+        }
 
         /// <summary>지금 캐시된 토큰을 버립니다. (키를 바꾼 뒤 호출)</summary>
         public static void InvalidateToken()
@@ -42,6 +64,7 @@ namespace CsvPipeline
             _token = null;
             _tokenExpiresAt = DateTime.MinValue;
             _tokenKeyPath = null;
+            _keyCheckedFor = null;
         }
 
         /// <summary>
