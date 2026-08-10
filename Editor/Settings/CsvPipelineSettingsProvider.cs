@@ -24,10 +24,20 @@ namespace CsvPipeline
             {
                 label = "CSV Pipeline",
                 keywords = new[] { "csv", "scriptableobject", "google", "sheet", "import" },
-                activateHandler = (_, __) => _serialized = null,
-                deactivateHandler = () => _serialized = null,
+                // 화면을 열고 닫을 때만 다시 찾습니다. 그리기 안에서 프로젝트를 뒤지면
+                // 마우스를 올려 두는 것만으로 메모리가 계속 늘어납니다.
+                activateHandler = (_, __) => Reset(),
+                deactivateHandler = Reset,
                 guiHandler = _ => DrawGui()
             };
+        }
+
+        /// <summary>들고 있던 것을 버려 다음 그리기에서 다시 찾게 합니다.</summary>
+        private static void Reset()
+        {
+            _serialized = null;
+            CsvPipelineSettings.InvalidateCache();
+            GoogleServiceAccount.InvalidateToken();
         }
 
         /// <summary>설정 화면 본문을 그립니다.</summary>
@@ -90,6 +100,7 @@ namespace CsvPipeline
             _serialized = null;
             Selection.activeObject = created;
             EditorGUIUtility.PingObject(created);
+            GUIUtility.ExitGUI();   // 이번 프레임의 남은 그리기는 사라진 화면을 향합니다.
         }
 
         /// <summary>실제로 쓰이는 경로들을 읽기 전용으로 보여 줍니다. (빈 칸의 폴백까지 확인 가능)</summary>

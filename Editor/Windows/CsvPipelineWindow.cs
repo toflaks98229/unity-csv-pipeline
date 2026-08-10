@@ -58,6 +58,7 @@ namespace CsvPipeline
         {
             _scanned = false;
             _sheets = null;
+            CsvPipelineSettings.InvalidateCache();
         }
 
         /// <summary>창을 그립니다.</summary>

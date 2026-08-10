@@ -3,6 +3,36 @@
 이 패키지의 주목할 만한 변경을 기록합니다.
 형식은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/)를 따르고, 버전은 [유의적 버전](https://semver.org/lang/ko/)을 씁니다.
 
+## [0.9.1] - 2026-08-10
+
+### Fixed
+
+- **에디터를 죽이던 결함.** `Project Settings ▸ CSV Pipeline` 을 열면 몇 분 만에
+  `Could not allocate memory: System out of memory!` 로 에디터가 내려앉았습니다.
+  `CsvPipelineSettings.ExistsInProject` 가 부를 때마다 프로젝트 전체 검색
+  (`AssetDatabase.FindAssets`)을 돌았고, 그 값을 **그리기 안에서** 읽고 있었습니다.
+  그리기는 마우스가 움직이는 동안에도 계속 돌기 때문에, 화면에 마우스를 올려 둔 것만으로
+  검색과 목록 할당이 끝없이 쌓였습니다. 찾기는 한 번만 하고 결과를 들고 있습니다.
+- **같은 값을 그리기에서 읽던 화면이 셋이었습니다.** 설정 제공자·파이프라인 창의 상태 줄·
+  설정 갈래 모두 고쳤습니다.
+- **`CsvPipelineSettings.InvalidateCache` 를 부르는 곳이 하나도 없었습니다.**
+  캐시를 버릴 길이 막혀 있으면 지운 설정을 계속 있다고 말하게 됩니다.
+  `CsvPipelineSettingsHook` 이 설정 에셋의 생성·삭제·이동을 보고 버립니다.
+- **`GoogleServiceAccount.IsConfigured` 가 그릴 때마다 디스크를 두드리던 것.**
+  설정 경로가 그대로면 확인 결과를 그대로 씁니다.
+
+### Added
+
+- `MemoryAssetGateway.FindPathsCount` — 프로젝트를 몇 번 뒤졌는지 셉니다.
+  값이 맞는지만 보는 검사로는 위 결함이 잡히지 않아, **몇 번 부르는지**를 검사합니다.
+  고치기 전 코드에 대고 돌리면 `1` 을 기대한 자리에서 `200` 이 나옵니다.
+- 검사 6건 추가 (112 → 118).
+
+### Changed
+
+- `CsvPipelineSettings.FindAll` 이 `ICsvAssetGateway` 를 거칩니다. 마지막까지 남아 있던
+  굽기 경로 밖의 직접 `AssetDatabase` 호출이었고, 거치게 되면서 검사할 수 있게 됐습니다.
+
 ## [0.9.0] - 2026-08-10
 
 파이프라인 창의 UI/UX 를 다시 짰습니다. 무엇을 보고 어떻게 판단했는지는
