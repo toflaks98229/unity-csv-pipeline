@@ -3,6 +3,41 @@
 이 패키지의 주목할 만한 변경을 기록합니다.
 형식은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/)를 따르고, 버전은 [유의적 버전](https://semver.org/lang/ko/)을 씁니다.
 
+## [0.8.0] - 2026-08-10
+
+아키텍처 리뷰의 리팩토링 로드맵 세 항목을 시행했습니다. 측정한 전후 값은
+`Documentation~/architecture-review.md` §5에 있습니다.
+
+### Added
+
+- **`ICsvAssetGateway`** — 파이프라인이 에셋 저장소에 닿는 유일한 통로입니다.
+  `UnityAssetGateway`가 실제 구현, `MemoryAssetGateway`가 아무것도 쓰지 않는 구현입니다.
+  `CsvAssets.Use(gateway)` 로 범위 안에서만 갈아 끼웁니다. 소비하는 프로젝트도 자기 임포터를
+  Unity 없이 검사할 수 있습니다.
+- **`SheetDownloader` · `SheetDiff` · `SheetSnapshot` · `SheetSyncScheduler`** —
+  받기·비교·사본·시점이 각자의 자리로 갈렸습니다. `SheetDiff`는 순수 함수만 있어 그대로
+  검사할 수 있습니다.
+- **`CsvImportDefinition.BakeEach`** — 진행·취소·집계·정리를 맡는 굽기 골격입니다.
+  파생은 "단위 하나를 어떻게 굽는가"만 답합니다.
+- **`CsvImportDefinition.CancelCurrentRun`** — 굽는 중에 더 진행해 봐야 결과가 틀어질 조건을
+  알아챈 파생이 안전하게 멈춥니다. 정리도 함께 건너뜁니다.
+- 검사 26건 추가 (72 → 98). 굽기 규칙은 이제 임시 폴더 없이 메모리에서 돕니다.
+
+### Fixed
+
+- **시트 비교의 대조 실패 안내가 틀린 숫자를 보여 주던 것.** "줄 수"라면서 색인 크기를
+  찍고 있었습니다. 색인은 겹친 식별자를 접으므로, 하필 그 안내가 열리는 상황
+  (식별자가 겹치거나 비어 있는 표)에서 양쪽 다 같은 숫자가 나와 아무것도 알려 주지
+  못했습니다. 실제 줄 수를 셉니다.
+
+### Changed
+
+- `CsvAssetPipeline`이 게이트웨이에 위임합니다. **공개 API는 그대로라 호출부는 바뀌지 않습니다.**
+- "받기"와 "비교만"이 각자 적어 두던 받기·검증 절차가 `SheetFetch` 하나로 합쳐졌습니다.
+  88줄·81줄 메서드가 사라졌습니다.
+- 파생 임포터 다섯 곳의 `Process`가 골격 위로 올라갔습니다.
+  **취소 시 정리를 건너뛰는 규칙이 한 곳에서 강제되고, 검사가 그것을 지킵니다.**
+
 ## [0.7.0] - 2026-08-10
 
 ### Changed

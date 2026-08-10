@@ -360,6 +360,48 @@ Google Sheets ──(에디터가 주기적으로 당김)──▶ CSV 루트/*.
 
 ---
 
+## 직접 만든 임포터 검사하기
+
+굽기 규칙은 **에셋을 하나도 만들지 않고** 확인할 수 있습니다. `MemoryAssetGateway` 를 끼우면
+표도 산출물도 메모리에만 있어, 임시 폴더도 재임포트도 필요 없습니다.
+
+```csharp
+[Test]
+public void 표의_값이_에셋에_들어간다()
+{
+    const string path = "Assets/Memory/Quests.csv";
+
+    using var assets = new MemoryAssetGateway()
+        .WithTable(path, "Id,Title,Reward\nQ_01,첫 의뢰,100\n");
+
+    using (CsvAssets.Use(assets))
+    {
+        CsvImportReport report = new QuestImporter().Run(path);
+
+        Assert.AreEqual(1, report.Created);
+        Assert.AreEqual("첫 의뢰", assets.Get<QuestData>("Assets/Memory/QuestData/Q_01.asset").title);
+    }
+}
+```
+
+거들 것 몇 가지:
+
+| 무엇 | 쓰임 |
+|---|---|
+| `WithTable(path, text)` | 표 원문을 놓습니다. 폴더도 함께 생깁니다 |
+| `WithAsset(path, asset)` · `Add<T>(path)` | 이미 있는 산출물을 놓습니다 |
+| `Get<T>(path)` | 구워진 결과를 읽습니다 |
+| `Referenced` | 여기 넣은 경로는 "참조가 남은 것"으로 취급돼 정리에서 보존됩니다 |
+| `SaveCount` | 저장이 몇 번 일어났는지 |
+
+검사가 목록에 보이려면 소비하는 프로젝트의 `Packages/manifest.json` 에 `testables` 가 필요합니다.
+
+```json
+"testables": [ "com.toflaks.csv-pipeline" ]
+```
+
+---
+
 ## 라이선스
 
 MIT

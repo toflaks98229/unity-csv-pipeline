@@ -79,9 +79,43 @@ Unity를 띄우지 않고 컴파일만 확인하려면, 에디터가 만들어 �
 | 필수 열이 빠지면 아무것도 굽지 않는다 | 빈 셀로 기본값을 굽는 것보다 멈추는 편이 낫습니다 |
 | 내보낸 표가 원본과 왕복한다 | 헤더 표기가 바뀌면 시트와 어긋나 동기화가 멈춥니다 |
 
-## 검사끼리 얽히지 않게 하기
+## 새 검사는 메모리 위에 쓰십시오
 
-검사마다 **서로 다른 임시 폴더**를 씁니다. 같은 경로를 한 세션 안에서 지웠다 만들기를 반복하면
-AssetDatabase가 지워진 항목을 아직 붙들고 있어, 결과가 실행 순서에 따라 달라집니다.
-실제로 이 얽힘 때문에 통과하던 검사가 다른 검사를 추가하자 실패한 적이 있습니다.
-새 검사를 더할 때 `CsvTestFolder.Create()` 를 쓰십시오.
+굽기 규칙은 **에셋을 하나도 만들지 않고** 확인할 수 있습니다. `MemoryAssetGateway` 를 끼우면
+표도 산출물도 메모리에만 있습니다. 임시 폴더가 없으니 검사끼리 얽힐 자리도 없습니다.
+
+```csharp
+using var assets = new MemoryAssetGateway().WithTable("Assets/Memory/Widgets.csv", csvText);
+using (CsvAssets.Use(assets))
+{
+    CsvImportReport report = new CsvSchemaImportDefinition(CsvSchema.For(typeof(WidgetData)))
+        .Run("Assets/Memory/Widgets.csv");
+
+    Assert.AreEqual(2, report.Created);
+    Assert.AreEqual("첫 위젯", assets.Get<WidgetData>("Assets/Memory/WidgetData/Widget_A.asset").title);
+}
+```
+
+이 게이트웨이는 **소비하는 프로젝트에서도 씁니다.** 직접 만든 임포터의 규칙을 Unity를 띄우지
+않고 확인할 수 있습니다.
+
+몇 가지 거들 것:
+
+| 무엇 | 쓰임 |
+|---|---|
+| `WithTable(path, text)` | 표 원문을 놓습니다. 폴더도 함께 생깁니다 |
+| `WithAsset(path, asset)` · `Add<T>(path)` | 이미 있는 산출물을 놓습니다 |
+| `Get<T>(path)` | 구워진 결과를 읽습니다 |
+| `Referenced` | 여기 넣은 경로는 "참조가 남은 것"으로 취급돼 정리에서 보존됩니다 |
+| `SaveCount` | 저장이 몇 번 일어났는지. 미리보기가 아무것도 쓰지 않는지 확인할 때 씁니다 |
+
+## 실제 AssetDatabase가 필요한 것만 통합 검사로
+
+메모리로 볼 수 없는 것이 셋 있습니다. **디스크 기록**(스크립트 링크가 끊긴 에셋은 값이 하나도
+남지 않습니다), **지운 자리에 다시 만들기**(재임포트가 끼어들어 메모리 수정이 버려지던 자리),
+**GUID 참조 훑기**. 이것들만 `CsvRoundTripTests` 에 남아 있습니다.
+
+거기에 검사를 더한다면 **서로 다른 임시 폴더**를 쓰십시오. 같은 경로를 한 세션 안에서 지웠다
+만들기를 반복하면 AssetDatabase가 지워진 항목을 아직 붙들고 있어, 결과가 실행 순서에 따라
+달라집니다. 실제로 이 얽힘 때문에 통과하던 검사가 다른 검사를 추가하자 실패한 적이 있습니다.
+`CsvTestFolder.Create()` 가 그 일을 합니다.

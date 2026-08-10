@@ -30,6 +30,12 @@ namespace CsvPipeline
         /// <summary>산출물 정리에 쓰는 에셋 검색 필터입니다.</summary>
         protected virtual string TypeFilter => $"t:{typeof(T).Name}";
 
+        /// <summary>표에서 사라진 산출물을 에셋 이름으로 대조해 정리합니다.</summary>
+        protected sealed override CsvReconcileMode ReconcileMode => CsvReconcileMode.ByName;
+
+        /// <summary>정리 대상을 찾을 검색 필터입니다.</summary>
+        protected sealed override string ReconcileTypeFilter => TypeFilter;
+
         /// <summary>식별자로부터 에셋 경로를 만듭니다.</summary>
         /// <param name="groupId">그룹 식별자입니다.</param>
         /// <returns>에셋 경로입니다.</returns>
@@ -40,10 +46,22 @@ namespace CsvPipeline
         /// <param name="report">건수와 문제를 기록할 리포트입니다.</param>
         protected override void Process(CsvTable table, CsvImportReport report)
         {
-            string folder = OutputFolder;
-            CsvAssetPipeline.EnsureFolder(folder);
+            CsvAssetPipeline.EnsureFolder(OutputFolder);
 
-            var groups = new Dictionary<string, List<CsvRow>>();
+            List<string> order = GroupRows(table, report, out Dictionary<string, List<CsvRow>> groups);
+
+            BakeEach(order, report, (id, _) => BakeGroup(id, groups[id]));
+        }
+
+        /// <summary>행들을 식별자로 묶습니다. 그룹은 표에 처음 등장한 순서를 지킵니다.</summary>
+        /// <param name="table">파싱된 표입니다.</param>
+        /// <param name="report">문제를 기록할 리포트입니다.</param>
+        /// <param name="groups">식별자 → 행들 사전을 받습니다.</param>
+        /// <returns>식별자들의 등장 순서입니다.</returns>
+        private List<string> GroupRows(CsvTable table, CsvImportReport report,
+                                       out Dictionary<string, List<CsvRow>> groups)
+        {
+            groups = new Dictionary<string, List<CsvRow>>();
             var order = new List<string>();
 
             foreach (CsvRow row in table.Rows)
@@ -51,6 +69,7 @@ namespace CsvPipeline
                 string id = GetGroupId(row);
                 if (string.IsNullOrEmpty(id))
                 {
+                    // 묶는 단계에서 빠진 행은 구울 단위가 되지 못하므로 여기서 세어 둡니다.
                     report.CountSkipped();
                     report.Warn("그룹 식별자가 비어 있어 건너뜁니다.", row.LineNumber);
                     continue;
@@ -65,33 +84,23 @@ namespace CsvPipeline
                 bucket.Add(row);
             }
 
-            var validNames = new HashSet<string>();
-            for (int i = 0; i < order.Count; i++)
-            {
-                if (ReportRowProgress(i, order.Count)) break;
+            return order;
+        }
 
-                string id = order[i];
-                T asset = CsvAssetPipeline.CreateOrLoad<T>(AssetPathFor(id), out bool created);
-                if (asset == null)
-                {
-                    report.CountSkipped();
-                    continue;
-                }
+        /// <summary>그룹 하나를 에셋으로 굽습니다.</summary>
+        /// <param name="id">그룹 식별자입니다.</param>
+        /// <param name="rows">이 그룹에 속한 행들입니다.</param>
+        /// <returns>구운 결과입니다.</returns>
+        private CsvBakeOutcome BakeGroup(string id, List<CsvRow> rows)
+        {
+            T asset = CsvAssetPipeline.CreateOrLoad<T>(AssetPathFor(id), out bool created);
+            if (asset == null) return CsvBakeOutcome.Skipped();
 
-                Bake(id, groups[id], asset);
-                CsvAssets.Current.MarkDirty(asset);
-                CsvAssetPipeline.FlushIfCreated(asset, created);
+            Bake(id, rows, asset);
+            CsvAssets.Current.MarkDirty(asset);
+            CsvAssetPipeline.FlushIfCreated(asset, created);
 
-                if (created) report.CountCreated();
-                else report.CountUpdated();
-
-                validNames.Add(id);
-            }
-
-            // 취소됐으면 아직 만들지 않은 그룹이 남아 있어, 그 에셋을 사라진 것으로 오해할 수 있습니다.
-            if (IsCancelled) return;
-
-            CsvAssetPipeline.ReconcileFolderByName(folder, TypeFilter, validNames, LogTag, report);
+            return CsvBakeOutcome.Baked(created, id);
         }
 
         /// <summary>그룹마다 만들지 갱신할지, 그리고 무엇이 사라질지를 계산합니다. 쓰지는 않습니다.</summary>

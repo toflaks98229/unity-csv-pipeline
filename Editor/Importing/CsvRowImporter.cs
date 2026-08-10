@@ -36,6 +36,13 @@ namespace CsvPipeline
         /// </summary>
         protected virtual bool ReconcileByPath => false;
 
+        /// <summary>표에서 사라진 산출물을 정리합니다. 대조 방식은 <see cref="ReconcileByPath"/>가 정합니다.</summary>
+        protected sealed override CsvReconcileMode ReconcileMode
+            => ReconcileByPath ? CsvReconcileMode.ByPath : CsvReconcileMode.ByName;
+
+        /// <summary>정리 대상을 찾을 검색 필터입니다.</summary>
+        protected sealed override string ReconcileTypeFilter => TypeFilter;
+
         /// <summary>식별자로부터 에셋 경로를 만듭니다.</summary>
         /// <param name="id">행의 식별자입니다.</param>
         /// <returns>에셋 경로입니다.</returns>
@@ -55,53 +62,36 @@ namespace CsvPipeline
         /// <param name="report">건수와 문제를 기록할 리포트입니다.</param>
         protected override void Process(CsvTable table, CsvImportReport report)
         {
-            string folder = OutputFolder;
-            CsvAssetPipeline.EnsureFolder(folder);
+            CsvAssetPipeline.EnsureFolder(OutputFolder);
 
-            var validNames = new HashSet<string>();
-            var validPaths = new HashSet<string>();
+            BakeEach(table.Rows, report, BakeOne);
+        }
 
-            for (int i = 0; i < table.Rows.Count; i++)
+        /// <summary>행 하나를 에셋으로 굽습니다.</summary>
+        /// <param name="row">읽을 행입니다.</param>
+        /// <param name="report">문제를 기록할 리포트입니다.</param>
+        /// <returns>구운 결과입니다.</returns>
+        private CsvBakeOutcome BakeOne(CsvRow row, CsvImportReport report)
+        {
+            string id = GetId(row);
+            if (string.IsNullOrEmpty(id))
             {
-                if (ReportRowProgress(i, table.Rows.Count)) break;
-
-                CsvRow row = table.Rows[i];
-                string id = GetId(row);
-                if (string.IsNullOrEmpty(id))
-                {
-                    report.CountSkipped();
-                    report.Warn("식별자가 비어 있어 건너뜁니다.", row.LineNumber);
-                    continue;
-                }
-
-                bool isNew = CsvAssets.Current.Load(AssetPathFor(id), typeof(T)) == null;
-
-                T asset = CreateOrLoad(id, row);
-                if (asset == null)
-                {
-                    report.CountSkipped();
-                    continue;
-                }
-
-                var serialized = new SerializedObject(asset);
-                Bake(row, asset, serialized);
-                serialized.ApplyModifiedPropertiesWithoutUndo();
-                CsvAssets.Current.MarkDirty(asset);
-                CsvAssetPipeline.FlushIfCreated(asset, isNew);
-
-                if (isNew) report.CountCreated();
-                else report.CountUpdated();
-
-                validNames.Add(id);
-                validPaths.Add(CsvAssets.Current.PathOf(asset));
+                report.Warn("식별자가 비어 있어 건너뜁니다.", row.LineNumber);
+                return CsvBakeOutcome.Skipped();
             }
 
-            // 취소됐으면 아직 읽지 않은 행이 남아 있습니다. 그 에셋들을 "표에서 사라진 것"으로
-            // 오해해 지우면 안 되므로 정리를 건너뜁니다.
-            if (IsCancelled) return;
+            bool isNew = CsvAssets.Current.Load(AssetPathFor(id), typeof(T)) == null;
 
-            if (ReconcileByPath) CsvAssetPipeline.ReconcileFolderByPath(folder, TypeFilter, validPaths, LogTag, report);
-            else CsvAssetPipeline.ReconcileFolderByName(folder, TypeFilter, validNames, LogTag, report);
+            T asset = CreateOrLoad(id, row);
+            if (asset == null) return CsvBakeOutcome.Skipped();
+
+            var serialized = new SerializedObject(asset);
+            Bake(row, asset, serialized);
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            CsvAssets.Current.MarkDirty(asset);
+            CsvAssetPipeline.FlushIfCreated(asset, isNew);
+
+            return CsvBakeOutcome.Baked(isNew, id, CsvAssets.Current.PathOf(asset));
         }
 
         /// <summary>행마다 만들지 갱신할지, 그리고 무엇이 사라질지를 계산합니다. 쓰지는 않습니다.</summary>
