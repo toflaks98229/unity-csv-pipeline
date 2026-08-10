@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using System.Text;
-using UnityEditor;
 using UnityEngine;
 
 namespace CsvPipeline
@@ -221,7 +220,7 @@ namespace CsvPipeline
             }
 
             string path = CsvAssetPipeline.FindCsvPath(FileName);
-            return path == null ? null : AssetDatabase.LoadAssetAtPath<Object>(path);
+            return path == null ? null : CsvAssets.Current.Load(path, typeof(Object));
         }
 
         /// <summary>심각도의 한 글자 표기입니다.</summary>

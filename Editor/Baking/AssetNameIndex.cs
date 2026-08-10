@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using System.IO;
-using UnityEditor;
 using UnityEngine;
 
 namespace CsvPipeline
@@ -19,17 +18,11 @@ namespace CsvPipeline
         public void Build(string folder = null)
         {
             _byName.Clear();
-            string[] guids = string.IsNullOrEmpty(folder)
-                ? AssetDatabase.FindAssets($"t:{typeof(T).Name}")
-                : (AssetDatabase.IsValidFolder(folder)
-                    ? AssetDatabase.FindAssets($"t:{typeof(T).Name}", new[] { folder })
-                    : new string[0]);
+            ICsvAssetGateway assets = CsvAssets.Current;
 
-            foreach (string guid in guids)
+            foreach (string path in assets.FindPaths($"t:{typeof(T).Name}", folder))
             {
-                string path = AssetDatabase.GUIDToAssetPath(guid);
-                T asset = AssetDatabase.LoadAssetAtPath<T>(path);
-                if (asset != null) _byName[Path.GetFileNameWithoutExtension(path)] = asset;
+                if (assets.Load(path, typeof(T)) is T asset) _byName[Path.GetFileNameWithoutExtension(path)] = asset;
             }
         }
 

@@ -120,7 +120,7 @@ namespace CsvPipeline
 
             report.Emit();
 
-            if (report.Touched) AssetDatabase.SaveAssets();
+            if (report.Touched) CsvAssets.Current.SaveAll();
             return report;
         }
 
@@ -241,7 +241,7 @@ namespace CsvPipeline
         /// </summary>
         /// <param name="plan">채울 계획입니다.</param>
         /// <param name="folder">정리 대상 폴더입니다.</param>
-        /// <param name="typeFilter">AssetDatabase 검색 필터입니다.</param>
+        /// <param name="typeFilter">에셋 검색 필터입니다.</param>
         /// <param name="valid">이번 표로 확정된 이름 또는 경로들입니다.</param>
         /// <param name="byPath">경로로 대조할지 여부입니다.</param>
         protected static void PlanObsolete(CsvImportPlan plan, string folder, string typeFilter,

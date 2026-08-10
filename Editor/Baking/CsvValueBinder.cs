@@ -238,18 +238,11 @@ namespace CsvPipeline
         private static Dictionary<string, UnityEngine.Object> BuildIndex(Type target, string folder)
         {
             var index = new Dictionary<string, UnityEngine.Object>();
-            string filter = $"t:{target.Name}";
+            ICsvAssetGateway assets = CsvAssets.Current;
 
-            string[] guids = string.IsNullOrEmpty(folder)
-                ? AssetDatabase.FindAssets(filter)
-                : (AssetDatabase.IsValidFolder(folder)
-                    ? AssetDatabase.FindAssets(filter, new[] { folder })
-                    : Array.Empty<string>());
-
-            foreach (string guid in guids)
+            foreach (string path in assets.FindPaths($"t:{target.Name}", folder))
             {
-                string path = AssetDatabase.GUIDToAssetPath(guid);
-                UnityEngine.Object asset = AssetDatabase.LoadAssetAtPath(path, target);
+                UnityEngine.Object asset = assets.Load(path, target);
                 if (asset != null) index[Path.GetFileNameWithoutExtension(path)] = asset;
             }
             return index;

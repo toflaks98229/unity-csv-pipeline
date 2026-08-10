@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using UnityEditor;
 using UnityEngine;
 
 namespace CsvPipeline
@@ -21,14 +20,14 @@ namespace CsvPipeline
 
         /// <summary>
         /// 한 그룹의 행들을 에셋에 기록합니다.
-        /// <b>여기서는 에셋 필드에 직접 대입하십시오.</b> (<see cref="SerializedObject"/>를 쓰지 않는 경로입니다)
+        /// <b>여기서는 에셋 필드에 직접 대입하십시오.</b> (<c>SerializedObject</c>를 쓰지 않는 경로입니다)
         /// </summary>
         /// <param name="groupId">그룹 식별자입니다.</param>
         /// <param name="rows">이 그룹에 속한 행들입니다. CSV 순서를 지킵니다.</param>
         /// <param name="asset">대상 에셋입니다.</param>
         protected abstract void Bake(string groupId, IReadOnlyList<CsvRow> rows, T asset);
 
-        /// <summary>산출물 정리에 쓰는 AssetDatabase 검색 필터입니다.</summary>
+        /// <summary>산출물 정리에 쓰는 에셋 검색 필터입니다.</summary>
         protected virtual string TypeFilter => $"t:{typeof(T).Name}";
 
         /// <summary>식별자로부터 에셋 경로를 만듭니다.</summary>
@@ -80,7 +79,7 @@ namespace CsvPipeline
                 }
 
                 Bake(id, groups[id], asset);
-                EditorUtility.SetDirty(asset);
+                CsvAssets.Current.MarkDirty(asset);
                 CsvAssetPipeline.FlushIfCreated(asset, created);
 
                 if (created) report.CountCreated();
@@ -115,7 +114,7 @@ namespace CsvPipeline
                 if (!seen.Add(id)) continue;
 
                 string path = AssetPathFor(id);
-                bool exists = AssetDatabase.LoadAssetAtPath<T>(path) != null;
+                bool exists = CsvAssets.Current.Load(path, typeof(T)) != null;
                 plan.Add(exists ? CsvChangeKind.Update : CsvChangeKind.Create, path, row.LineNumber);
             }
 

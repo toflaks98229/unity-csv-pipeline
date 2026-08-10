@@ -27,7 +27,7 @@ namespace CsvPipeline
         /// <param name="serialized">대상 에셋의 직렬화 객체입니다. 호출 뒤 자동으로 적용됩니다.</param>
         protected abstract void Bake(CsvRow row, T asset, SerializedObject serialized);
 
-        /// <summary>산출물 정리에 쓰는 AssetDatabase 검색 필터입니다.</summary>
+        /// <summary>산출물 정리에 쓰는 에셋 검색 필터입니다.</summary>
         protected virtual string TypeFilter => $"t:{typeof(T).Name}";
 
         /// <summary>
@@ -74,7 +74,7 @@ namespace CsvPipeline
                     continue;
                 }
 
-                bool isNew = AssetDatabase.LoadAssetAtPath<T>(AssetPathFor(id)) == null;
+                bool isNew = CsvAssets.Current.Load(AssetPathFor(id), typeof(T)) == null;
 
                 T asset = CreateOrLoad(id, row);
                 if (asset == null)
@@ -86,14 +86,14 @@ namespace CsvPipeline
                 var serialized = new SerializedObject(asset);
                 Bake(row, asset, serialized);
                 serialized.ApplyModifiedPropertiesWithoutUndo();
-                EditorUtility.SetDirty(asset);
+                CsvAssets.Current.MarkDirty(asset);
                 CsvAssetPipeline.FlushIfCreated(asset, isNew);
 
                 if (isNew) report.CountCreated();
                 else report.CountUpdated();
 
                 validNames.Add(id);
-                validPaths.Add(AssetDatabase.GetAssetPath(asset));
+                validPaths.Add(CsvAssets.Current.PathOf(asset));
             }
 
             // 취소됐으면 아직 읽지 않은 행이 남아 있습니다. 그 에셋들을 "표에서 사라진 것"으로
@@ -122,7 +122,7 @@ namespace CsvPipeline
                 }
 
                 string path = AssetPathFor(id);
-                bool exists = AssetDatabase.LoadAssetAtPath<T>(path) != null;
+                bool exists = CsvAssets.Current.Load(path, typeof(T)) != null;
 
                 plan.Add(exists ? CsvChangeKind.Update : CsvChangeKind.Create, path, row.LineNumber);
                 validNames.Add(id);

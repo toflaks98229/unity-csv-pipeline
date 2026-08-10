@@ -12,7 +12,7 @@ namespace CsvPipeline
     /// <typeparam name="T">갱신할 ScriptableObject 타입입니다.</typeparam>
     public abstract class CsvSingletonImporter<T> : CsvImportDefinition where T : ScriptableObject
     {
-        /// <summary>대상 에셋 조회에 쓰는 AssetDatabase 검색 필터입니다.</summary>
+        /// <summary>대상 에셋 조회에 쓰는 에셋 검색 필터입니다.</summary>
         protected virtual string TypeFilter => $"t:{typeof(T).Name}";
 
         /// <summary>대상 에셋이 없을 때 경고에 덧붙일 안내입니다. (어디서 만들 수 있는지)</summary>
@@ -46,7 +46,7 @@ namespace CsvPipeline
             }
 
             serialized.ApplyModifiedPropertiesWithoutUndo();
-            EditorUtility.SetDirty(asset);
+            CsvAssets.Current.MarkDirty(asset);
         }
 
         /// <summary>
@@ -56,12 +56,7 @@ namespace CsvPipeline
         /// <param name="plan">채울 계획입니다.</param>
         protected override void BuildPlan(CsvTable table, CsvImportPlan plan)
         {
-            var paths = new List<string>();
-            foreach (string guid in AssetDatabase.FindAssets(TypeFilter))
-            {
-                paths.Add(AssetDatabase.GUIDToAssetPath(guid));
-            }
-            paths.Sort(System.StringComparer.Ordinal);
+            List<string> paths = SortedPaths();
 
             if (paths.Count == 0)
             {
@@ -87,19 +82,10 @@ namespace CsvPipeline
         /// <returns>찾은 에셋이거나 null입니다.</returns>
         private T FindSingle(CsvImportReport report)
         {
-            var paths = new List<string>();
-            foreach (string guid in AssetDatabase.FindAssets(TypeFilter))
-            {
-                paths.Add(AssetDatabase.GUIDToAssetPath(guid));
-            }
-            // FindAssets의 순서는 보장되지 않습니다. 여럿일 때 매번 다른 에셋을 갱신하지 않도록 경로로 고정합니다.
-            paths.Sort(System.StringComparer.Ordinal);
-
             var found = new List<T>();
-            foreach (string path in paths)
+            foreach (string path in SortedPaths())
             {
-                var asset = AssetDatabase.LoadAssetAtPath<T>(path);
-                if (asset != null) found.Add(asset);
+                if (CsvAssets.Current.Load(path, typeof(T)) is T asset) found.Add(asset);
             }
 
             if (found.Count == 0)
@@ -121,6 +107,18 @@ namespace CsvPipeline
             }
 
             return found[0];
+        }
+
+        /// <summary>
+        /// 대상 타입의 에셋 경로들을 경로순으로 돌려줍니다.
+        /// 검색 순서는 보장되지 않아, 여럿일 때 매번 다른 에셋을 갱신하지 않도록 정렬로 고정합니다.
+        /// </summary>
+        /// <returns>정렬된 에셋 경로들입니다.</returns>
+        private List<string> SortedPaths()
+        {
+            var paths = new List<string>(CsvAssets.Current.FindPaths(TypeFilter));
+            paths.Sort(System.StringComparer.Ordinal);
+            return paths;
         }
     }
 }
