@@ -5,12 +5,14 @@ using System.Text;
 using System.Threading.Tasks;
 using UnityEditor;
 using UnityEngine;
-using UnityEngine.Networking;
 
 namespace CsvPipeline
 {
     /// <summary>
-    /// 구글 스프레드시트에서 CSV를 받아 <c>03.DataAssets/CSV</c>에 덮어쓰는 <b>에디터 전용</b> 동기화 도구입니다.
+    /// 구글 스프레드시트에서 표를 받아 CSV 폴더에 덮어쓰는 <b>에디터 전용</b> 동기화 도구입니다.
+    /// 받기는 <see cref="SheetDownloader"/>, 비교는 <see cref="SheetDiff"/>,
+    /// 사본은 <see cref="SheetSnapshot"/>, 시점은 <see cref="SheetSyncScheduler"/>가 맡고,
+    /// 여기에는 <b>사람에게 무엇을 보여 주고 무엇을 파일로 쓸지</b>만 남깁니다.
     /// </summary>
     public static class GoogleSheetSync
     {
@@ -20,22 +22,17 @@ namespace CsvPipeline
         /// <summary>동기화 설정 에셋들이 놓이는 폴더입니다. (Editor 폴더라 빌드에 포함되지 않습니다)</summary>
         private static string SettingsRoot => CsvPipelineSettings.Instance.SheetSyncSettingsFolder;
 
-        /// <summary>
-        /// 마지막으로 받아 기록한 내용의 사본을 두는 폴더입니다. (버전 관리 대상이 아닌 Library 아래)
-        /// </summary>
-        private static string SnapshotRoot => CsvPipelineSettings.Instance.SnapshotFolder;
-
         /// <summary>로그 접두사입니다.</summary>
         private const string TAG = "[SheetSync]";
 
         /// <summary>설정 화면으로 안내할 때 쓰는 경로입니다.</summary>
         private const string SETTINGS_HINT = "Project Settings ▸ CSV Pipeline";
 
-        /// <summary>자동 받기의 다음 확인 예정 시각입니다. (에디터 기동 후 경과 초)</summary>
-        private static double _nextAutoPullTime;
-
         /// <summary>동기화가 진행 중인지 여부입니다. (중복 실행 방지)</summary>
         private static bool _running;
+
+        /// <summary>지금 동기화가 돌고 있는지 여부입니다.</summary>
+        public static bool IsRunning => _running;
 
         // ====================================================================================================
         // 메뉴
@@ -108,9 +105,20 @@ namespace CsvPipeline
             _ = PullManyAsync(new List<GoogleSheetSyncSettings> { settings }, interactive: true);
         }
 
+        /// <summary>
+        /// 자동 받기 경로입니다. <b>대화상자를 띄우지 않습니다.</b>
+        /// 확인이 필요한 상황은 건너뛰고 로그만 남깁니다.
+        /// </summary>
+        /// <param name="targets">이번에 받을 설정들입니다.</param>
+        public static void PullAutomatically(List<GoogleSheetSyncSettings> targets)
+            => _ = PullManyAsync(targets, interactive: false);
+
         /// <summary>프로젝트의 모든 연동 설정입니다. 파일 이름 순입니다.</summary>
         /// <returns>찾은 설정 에셋 목록입니다.</returns>
         public static List<GoogleSheetSyncSettings> FindAll() => FindAllSettings();
+
+        /// <summary>연동 설정의 존재 여부에 맞춰 자동 받기 루프를 다시 겁니다.</summary>
+        internal static void RefreshAutoPullHook() => SheetSyncScheduler.Refresh();
 
         /// <summary>설정 에셋 폴더를 프로젝트 창에서 선택합니다.</summary>
         public static void SelectSettingsFolderMenu()
@@ -176,68 +184,11 @@ namespace CsvPipeline
         }
 
         // ====================================================================================================
-        // 자동 받기
+        // 받기
         // ====================================================================================================
 
-        /// <summary>지금 자동 받기 루프가 걸려 있는지 여부입니다.</summary>
-        private static bool _hooked;
-
-        /// <summary>
-        /// 에디터 기동 시 자동 받기 루프를 겁니다.
-        /// <b>연동 설정이 하나도 없으면 걸지 않습니다.</b> 이 기능을 쓰지 않는 프로젝트에까지
-        /// 매 프레임 콜백을 남겨 둘 이유가 없습니다.
-        /// </summary>
-        [InitializeOnLoadMethod]
-        private static void InstallAutoPull() => RefreshAutoPullHook();
-
-        /// <summary>연동 설정의 존재 여부에 맞춰 자동 받기 루프를 걸거나 뗍니다.</summary>
-        internal static void RefreshAutoPullHook()
-        {
-            bool wanted = AssetDatabase.FindAssets($"t:{nameof(GoogleSheetSyncSettings)}").Length > 0;
-            if (wanted == _hooked) return;
-
-            if (wanted) EditorApplication.update += AutoPullTick;
-            else EditorApplication.update -= AutoPullTick;
-
-            _hooked = wanted;
-        }
-
-        /// <summary>자동 받기가 켜진 설정들을 간격마다 확인합니다.</summary>
-        private static void AutoPullTick()
-        {
-            if (_running || EditorApplication.isCompiling || EditorApplication.isUpdating) return;
-            if (EditorApplication.timeSinceStartup < _nextAutoPullTime) return;
-
-            var all = FindAllSettings();
-            if (all.Count == 0)
-            {
-                // 설정이 전부 지워졌으면 루프를 뗍니다. 다시 생기면 임포트 통지가 걸어 줍니다.
-                RefreshAutoPullHook();
-                return;
-            }
-
-            var due = new List<GoogleSheetSyncSettings>();
-            float interval = 300f;
-
-            foreach (GoogleSheetSyncSettings s in all)
-            {
-                if (!s.autoPull || !s.enabled || !s.IsConfigured) continue;
-
-                due.Add(s);
-                interval = Mathf.Min(interval, Mathf.Max(10f, s.autoPullIntervalSeconds));
-            }
-
-            // 대상이 없으면 다음 확인을 멀찍이 미뤄, 매 프레임 에셋을 뒤지지 않게 합니다.
-            _nextAutoPullTime = EditorApplication.timeSinceStartup + (due.Count > 0 ? interval : 300f);
-            if (due.Count == 0) return;
-
-            // 자동 경로에서는 대화상자를 띄우지 않습니다. 확인이 필요한 상황은 건너뛰고 로그만 남깁니다.
-            _ = PullManyAsync(due, interactive: false);
-        }
-
-        // ====================================================================================================
-        // 동기화 본체
-        // ====================================================================================================
+        /// <summary>한 파일의 처리 결과입니다.</summary>
+        private enum PullResult { Changed, Unchanged, Failed }
 
         /// <summary>
         /// 주어진 설정들을 받아 변경된 파일만 기록하고 재임포트합니다.
@@ -246,7 +197,7 @@ namespace CsvPipeline
         /// <param name="interactive">사용자에게 확인 대화상자를 띄워도 되는 경로인지 여부입니다.</param>
         private static async Task PullManyAsync(List<GoogleSheetSyncSettings> targets, bool interactive)
         {
-            if (_running) return;
+            if (_running || targets == null || targets.Count == 0) return;
 
             _running = true;
             var changed = new List<string>();
@@ -254,7 +205,7 @@ namespace CsvPipeline
 
             try
             {
-                Directory.CreateDirectory(SnapshotRoot);
+                SheetSnapshot.EnsureFolder();
 
                 for (int i = 0; i < targets.Count; i++)
                 {
@@ -266,8 +217,7 @@ namespace CsvPipeline
                             settings.csvFileName, (float)i / Mathf.Max(1, targets.Count));
                     }
 
-                    PullResult result = await PullOneAsync(settings, interactive);
-                    switch (result)
+                    switch (await PullOneAsync(settings, interactive))
                     {
                         case PullResult.Changed: changed.Add(settings.csvFileName); break;
                         case PullResult.Unchanged: skipped++; break;
@@ -290,222 +240,7 @@ namespace CsvPipeline
         }
 
         /// <summary>
-        /// 대상들을 시트와 비교해 결과를 콘솔에 보고합니다. 파일은 건드리지 않습니다.
-        /// </summary>
-        /// <param name="targets">비교할 설정 목록입니다.</param>
-        private static async Task CompareAllAsync(List<GoogleSheetSyncSettings> targets)
-        {
-            if (_running) return;
-
-            _running = true;
-            var report = new StringBuilder();
-            int same = 0, different = 0, failed = 0;
-
-            try
-            {
-                for (int i = 0; i < targets.Count; i++)
-                {
-                    GoogleSheetSyncSettings settings = targets[i];
-                    string csvFileName = settings.csvFileName;
-
-                    EditorUtility.DisplayProgressBar("Google Sheet 비교",
-                        csvFileName, (float)i / Mathf.Max(1, targets.Count));
-
-                    string fullPath = Path.GetFullPath($"{CsvRoot}/{csvFileName}");
-                    if (!File.Exists(fullPath))
-                    {
-                        failed++;
-                        report.AppendLine($"  [실패] {csvFileName} — 로컬에 파일이 없습니다");
-                        continue;
-                    }
-
-                    string body;
-                    try
-                    {
-                        body = await DownloadTextAsync(settings.ExportUrl);
-                    }
-                    catch (Exception e)
-                    {
-                        failed++;
-                        report.AppendLine($"  [실패] {csvFileName} — 받기 실패: {e.Message}");
-                        continue;
-                    }
-
-                    if (LooksLikeHtml(body))
-                    {
-                        failed++;
-                        report.AppendLine($"  [실패] {csvFileName} — CSV 대신 HTML (공유 설정을 확인하세요)");
-                        continue;
-                    }
-                    if (string.IsNullOrWhiteSpace(body))
-                    {
-                        failed++;
-                        report.AppendLine($"  [실패] {csvFileName} — 시트가 비어 있습니다");
-                        continue;
-                    }
-
-                    string local = Normalize(File.ReadAllText(fullPath));
-                    string sheet = Normalize(body);
-                    string difference = DescribeDifference(local, sheet);
-
-                    if (difference == null)
-                    {
-                        same++;
-                        continue;
-                    }
-
-                    different++;
-                    report.AppendLine($"  [다름] {csvFileName}");
-                    report.Append(difference);
-                }
-            }
-            finally
-            {
-                EditorUtility.ClearProgressBar();
-                _running = false;
-            }
-
-            string headline = $"{TAG} 비교 결과 — 동일 {same} / 다름 {different} / 실패 {failed}";
-
-            if (different == 0 && failed == 0)
-            {
-                Debug.Log($"{headline}\n  모든 표가 시트와 일치합니다. 받아도 잃을 것이 없습니다.");
-            }
-            else
-            {
-                Debug.LogWarning($"{headline}\n{report}");
-            }
-
-            EditorUtility.DisplayDialog("Google Sheet 비교",
-                $"동일 {same} / 다름 {different} / 실패 {failed}\n\n"
-                + (different + failed > 0
-                    ? "자세한 내용은 콘솔을 보세요.\n\n다름으로 나온 표는 받으면 로컬 내용이 시트 내용으로 바뀝니다."
-                    : "모든 표가 시트와 일치합니다."),
-                "확인");
-        }
-
-        /// <summary>
-        /// 두 CSV 내용의 차이를 사람이 읽을 수 있게 설명합니다. 같으면 null을 반환합니다.
-        /// </summary>
-        /// <param name="local">로컬 CSV 내용입니다.</param>
-        /// <param name="sheet">시트에서 받은 내용입니다.</param>
-        /// <returns>차이 설명 문자열이거나, 동일하면 null입니다.</returns>
-        private static string DescribeDifference(string local, string sheet)
-        {
-            if (local == sheet) return null;
-
-            var text = new StringBuilder();
-            string localHeader = FirstLine(local);
-            string sheetHeader = FirstLine(sheet);
-
-            if (localHeader != sheetHeader)
-            {
-                // 헤더가 다르면 받기가 확인을 묻고 막아 줍니다. 열 구성이 바뀐 것인지,
-                // 엉뚱한 탭을 가리키는 것인지는 사람이 봐야 알 수 있습니다.
-                text.AppendLine("      헤더가 다릅니다 (받기가 확인을 묻습니다)");
-                text.AppendLine($"        로컬: {localHeader}");
-                text.AppendLine($"        시트: {sheetHeader}");
-                return text.ToString();
-            }
-
-            Dictionary<string, string> localRows = IndexByFirstField(local);
-            Dictionary<string, string> sheetRows = IndexByFirstField(sheet);
-
-            var onlyLocal = new List<string>();
-            var onlySheet = new List<string>();
-            var changed = new List<string>();
-
-            foreach (KeyValuePair<string, string> pair in localRows)
-            {
-                if (!sheetRows.TryGetValue(pair.Key, out string sheetRow)) onlyLocal.Add(pair.Key);
-                else if (sheetRow != pair.Value) changed.Add(pair.Key);
-            }
-            foreach (string key in sheetRows.Keys)
-            {
-                if (!localRows.ContainsKey(key)) onlySheet.Add(key);
-            }
-
-            // 헤더가 같으면 받기가 아무 경고 없이 덮습니다. 그래서 여기서 분명히 알려야 합니다.
-            text.AppendLine("      헤더는 같고 내용이 다릅니다 (받으면 경고 없이 덮입니다)");
-
-            if (onlyLocal.Count > 0) text.AppendLine($"        로컬에만 있는 행 {onlyLocal.Count}: {Join(onlyLocal)}");
-            if (onlySheet.Count > 0) text.AppendLine($"        시트에만 있는 행 {onlySheet.Count}: {Join(onlySheet)}");
-            if (changed.Count > 0) text.AppendLine($"        값이 다른 행 {changed.Count}: {Join(changed)}");
-
-            // 첫 열이 비어 있거나 중복이면 행 대조가 성립하지 않습니다. 그때는 줄 수만 알립니다.
-            if (onlyLocal.Count == 0 && onlySheet.Count == 0 && changed.Count == 0)
-            {
-                text.AppendLine($"        (행 대조로는 차이를 찾지 못했습니다. 줄 수 로컬 {localRows.Count} / 시트 {sheetRows.Count})");
-            }
-
-            return text.ToString();
-        }
-
-        /// <summary>목록을 보기 좋게 잇습니다. 너무 길면 뒤를 줄입니다.</summary>
-        /// <param name="items">이어 붙일 항목들입니다.</param>
-        /// <returns>쉼표로 이은 문자열입니다.</returns>
-        private static string Join(List<string> items)
-        {
-            const int maxShown = 8;
-            if (items.Count <= maxShown) return string.Join(", ", items);
-
-            return string.Join(", ", items.GetRange(0, maxShown)) + $" 외 {items.Count - maxShown}개";
-        }
-
-        /// <summary>헤더를 뺀 각 줄을 첫 열(식별자) 기준으로 색인합니다.</summary>
-        /// <param name="text">CSV 전체 내용입니다.</param>
-        /// <returns>식별자 → 줄 전체 사전입니다.</returns>
-        private static Dictionary<string, string> IndexByFirstField(string text)
-        {
-            var map = new Dictionary<string, string>();
-            string[] lines = text.Split('\n');
-
-            for (int i = 1; i < lines.Length; i++)   // 0번은 헤더
-            {
-                string line = lines[i];
-                if (string.IsNullOrWhiteSpace(line)) continue;
-
-                string key = FirstField(line);
-                if (string.IsNullOrEmpty(key)) key = $"(빈 식별자 {i}행)";
-
-                // 식별자가 겹치면 뒤엣것이 이깁니다. (임포터도 같은 순서로 덮어씁니다)
-                map[key] = line;
-            }
-
-            return map;
-        }
-
-        /// <summary>한 줄에서 첫 열의 값을 뽑습니다. 큰따옴표로 감싼 필드를 인식합니다.</summary>
-        /// <param name="line">CSV 한 줄입니다.</param>
-        /// <returns>첫 열의 값입니다.</returns>
-        private static string FirstField(string line)
-        {
-            if (line.Length == 0) return string.Empty;
-
-            if (line[0] != '"')
-            {
-                int comma = line.IndexOf(',');
-                return (comma < 0 ? line : line.Substring(0, comma)).Trim();
-            }
-
-            var buffer = new StringBuilder();
-            for (int i = 1; i < line.Length; i++)
-            {
-                if (line[i] != '"') { buffer.Append(line[i]); continue; }
-
-                // 이스케이프된 따옴표("")는 리터럴 " 로, 아니면 필드 종료입니다.
-                if (i + 1 < line.Length && line[i + 1] == '"') { buffer.Append('"'); i++; continue; }
-                break;
-            }
-
-            return buffer.ToString().Trim();
-        }
-
-        /// <summary>한 파일의 처리 결과입니다.</summary>
-        private enum PullResult { Changed, Unchanged, Failed }
-
-        /// <summary>
-        /// 설정 하나가 가리키는 탭을 받아 검증하고, 내용이 달라졌을 때만 파일에 기록합니다.
+        /// 설정 하나가 가리키는 탭을 받아, 내용이 달라졌을 때만 파일에 기록합니다.
         /// </summary>
         /// <param name="settings">처리할 설정입니다.</param>
         /// <param name="interactive">확인 대화상자를 띄워도 되는 경로인지 여부입니다.</param>
@@ -522,66 +257,28 @@ namespace CsvPipeline
                 return PullResult.Failed;
             }
 
-            string body;
-            try
+            SheetFetch fetch = await SheetDownloader.FetchAsync(settings.ExportUrl);
+            if (!fetch.Ok)
             {
-                body = await DownloadTextAsync(settings.ExportUrl);
-            }
-            catch (Exception e)
-            {
-                Debug.LogWarning($"{TAG} {csvFileName}: 받기 실패 — {e.Message}", settings);
-                return PullResult.Failed;
-            }
-
-            // [핵심 검증] 시트가 공개돼 있지 않으면 구글은 오류가 아니라 로그인 HTML을 200으로 돌려줍니다.
-            // 이걸 통과시키면 CSV가 HTML로 덮이고 파이프라인이 ScriptableObject를 망가뜨립니다.
-            if (LooksLikeHtml(body))
-            {
-                Debug.LogError(
-                    $"{TAG} {csvFileName}: CSV 대신 HTML이 왔습니다. 시트에 접근할 권한이 없다는 뜻입니다.\n"
-                    + "  공개 시트로 쓰려면: 공유 → 링크가 있는 모든 사용자 → 뷰어\n"
-                    + "  비공개로 두려면: Project Settings ▸ CSV Pipeline 에 서비스 계정 키를 지정하고,\n"
-                    + "  그 계정 이메일에게 시트를 공유하십시오."
-                    + (GoogleServiceAccount.IsConfigured ? "\n  (키는 설정돼 있습니다. 시트 공유 대상을 확인하십시오)" : string.Empty),
-                    settings);
-                return PullResult.Failed;
-            }
-
-            if (string.IsNullOrWhiteSpace(body))
-            {
-                Debug.LogWarning($"{TAG} {csvFileName}: 빈 응답이라 건너뜁니다. (탭이 비어 있는지 확인)", settings);
-                return PullResult.Failed;
-            }
-
-            string normalized = Normalize(body);
-            string existing = Normalize(File.ReadAllText(fullPath));
-            if (existing == normalized) return PullResult.Unchanged;
-
-            // 헤더가 달라졌다면 열을 바꿨거나 엉뚱한 탭을 가리키는 것입니다. 후자는 조용히 통과하면 안 됩니다.
-            if (settings.confirmOnHeaderChange && FirstLine(existing) != FirstLine(normalized))
-            {
-                if (!interactive)
+                if (fetch.IsAccessDenied)
                 {
-                    Debug.LogWarning($"{TAG} {csvFileName}: 헤더가 달라 자동 받기를 건너뜁니다. "
-                                   + "메뉴에서 직접 받아 확인하세요.", settings);
-                    return PullResult.Failed;
+                    Debug.LogError($"{TAG} {csvFileName}: {fetch.Error}\n{SheetDownloader.AccessDeniedHint()}", settings);
                 }
-
-                string message =
-                    $"{csvFileName}의 헤더가 다릅니다.\n\n"
-                    + $"현재: {FirstLine(existing)}\n\n"
-                    + $"시트: {FirstLine(normalized)}\n\n"
-                    + $"엉뚱한 탭(gid={settings.Gid})을 가리키고 있을 수 있습니다. 덮어쓸까요?";
-
-                if (!EditorUtility.DisplayDialog("헤더가 다릅니다", message, "덮어쓰기", "건너뛰기"))
+                else
                 {
-                    return PullResult.Failed;
+                    Debug.LogWarning($"{TAG} {csvFileName}: {fetch.Error}", settings);
                 }
+                return PullResult.Failed;
             }
+
+            string incoming = fetch.Text;
+            string existing = SheetDiff.Normalize(File.ReadAllText(fullPath));
+            if (existing == incoming) return PullResult.Unchanged;
+
+            if (!ConfirmHeaderChange(settings, existing, incoming, interactive)) return PullResult.Failed;
 
             // 로컬에서 손으로 고친 흔적이 있으면 알립니다. (시트가 저작 원본이라는 규칙을 어긴 상태)
-            string snapshotPath = Path.Combine(SnapshotRoot, csvFileName);
-            if (File.Exists(snapshotPath) && Normalize(File.ReadAllText(snapshotPath)) != existing)
+            if (SheetSnapshot.DivergedFromLocal(csvFileName, existing))
             {
                 Debug.LogWarning(
                     $"{TAG} {csvFileName}: 마지막 동기화 이후 로컬에서 직접 수정된 흔적이 있습니다. "
@@ -589,9 +286,43 @@ namespace CsvPipeline
             }
 
             // BOM 없는 UTF-8로 기록합니다. 파이프라인의 리더가 기대하는 형식입니다.
-            File.WriteAllText(fullPath, normalized, new UTF8Encoding(false));
-            File.WriteAllText(snapshotPath, normalized, new UTF8Encoding(false));
+            File.WriteAllText(fullPath, incoming, new UTF8Encoding(false));
+            SheetSnapshot.Write(csvFileName, incoming);
             return PullResult.Changed;
+        }
+
+        /// <summary>
+        /// 헤더가 달라졌을 때 덮어써도 되는지 정합니다.
+        /// 열을 바꾼 것일 수도, <b>엉뚱한 탭을 가리키는 것</b>일 수도 있어 조용히 통과시키지 않습니다.
+        /// </summary>
+        /// <param name="settings">처리 중인 설정입니다.</param>
+        /// <param name="existing">지금 로컬 내용입니다.</param>
+        /// <param name="incoming">시트에서 받은 내용입니다.</param>
+        /// <param name="interactive">대화상자를 띄워도 되는 경로인지 여부입니다.</param>
+        /// <returns>계속 진행해도 되면 true입니다.</returns>
+        private static bool ConfirmHeaderChange(GoogleSheetSyncSettings settings,
+                                                string existing, string incoming, bool interactive)
+        {
+            if (!settings.confirmOnHeaderChange) return true;
+
+            string localHeader = SheetDiff.FirstLine(existing);
+            string sheetHeader = SheetDiff.FirstLine(incoming);
+            if (localHeader == sheetHeader) return true;
+
+            if (!interactive)
+            {
+                Debug.LogWarning($"{TAG} {settings.csvFileName}: 헤더가 달라 자동 받기를 건너뜁니다. "
+                               + "메뉴에서 직접 받아 확인하세요.", settings);
+                return false;
+            }
+
+            string message =
+                $"{settings.csvFileName}의 헤더가 다릅니다.\n\n"
+                + $"현재: {localHeader}\n\n"
+                + $"시트: {sheetHeader}\n\n"
+                + $"엉뚱한 탭(gid={settings.Gid})을 가리키고 있을 수 있습니다. 덮어쓸까요?";
+
+            return EditorUtility.DisplayDialog("헤더가 다릅니다", message, "덮어쓰기", "건너뛰기");
         }
 
         /// <summary>
@@ -618,92 +349,111 @@ namespace CsvPipeline
         }
 
         // ====================================================================================================
-        // 보조
+        // 비교
         // ====================================================================================================
 
         /// <summary>
-        /// URL의 본문을 문자열로 받아옵니다.
-        /// 서비스 계정 키가 설정돼 있으면 액세스 토큰을 붙여 <b>비공개 시트</b>도 읽습니다.
+        /// 대상들을 시트와 비교해 결과를 콘솔에 보고합니다. 파일은 건드리지 않습니다.
         /// </summary>
-        /// <param name="url">받아올 주소입니다.</param>
-        /// <returns>응답 본문입니다.</returns>
-        private static async Task<string> DownloadTextAsync(string url)
+        /// <param name="targets">비교할 설정 목록입니다.</param>
+        private static async Task CompareAllAsync(List<GoogleSheetSyncSettings> targets)
         {
-            string token = GoogleServiceAccount.IsConfigured
-                ? await GoogleServiceAccount.GetAccessTokenAsync()
-                : null;
+            if (_running || targets == null || targets.Count == 0) return;
 
-            return await DownloadTextAsync(url, token);
-        }
+            _running = true;
+            var report = new StringBuilder();
+            int same = 0, different = 0, failed = 0;
 
-        /// <summary>URL의 본문을 받아옵니다. 토큰이 있으면 Authorization 헤더에 실습니다.</summary>
-        /// <param name="url">받아올 주소입니다.</param>
-        /// <param name="accessToken">쓸 액세스 토큰입니다. null이면 붙이지 않습니다.</param>
-        /// <returns>응답 본문입니다.</returns>
-        private static Task<string> DownloadTextAsync(string url, string accessToken)
-        {
-            var completion = new TaskCompletionSource<string>();
-            UnityWebRequest request = UnityWebRequest.Get(url);
-
-            if (!string.IsNullOrEmpty(accessToken))
+            try
             {
-                request.SetRequestHeader("Authorization", "Bearer " + accessToken);
+                for (int i = 0; i < targets.Count; i++)
+                {
+                    GoogleSheetSyncSettings settings = targets[i];
+
+                    EditorUtility.DisplayProgressBar("Google Sheet 비교",
+                        settings.csvFileName, (float)i / Mathf.Max(1, targets.Count));
+
+                    switch (await CompareOneAsync(settings, report))
+                    {
+                        case CompareResult.Same: same++; break;
+                        case CompareResult.Different: different++; break;
+                        default: failed++; break;
+                    }
+                }
+            }
+            finally
+            {
+                EditorUtility.ClearProgressBar();
+                _running = false;
             }
 
-            UnityWebRequestAsyncOperation operation = request.SendWebRequest();
-            operation.completed += _ =>
+            EmitCompareReport(report, same, different, failed);
+        }
+
+        /// <summary>한 표의 비교 결과입니다.</summary>
+        private enum CompareResult { Same, Different, Failed }
+
+        /// <summary>
+        /// 설정 하나를 시트와 비교하고, 알릴 내용을 보고문에 덧붙입니다.
+        /// </summary>
+        /// <param name="settings">비교할 설정입니다.</param>
+        /// <param name="report">결과를 덧붙일 보고문입니다.</param>
+        /// <returns>비교 결과입니다.</returns>
+        private static async Task<CompareResult> CompareOneAsync(GoogleSheetSyncSettings settings, StringBuilder report)
+        {
+            string csvFileName = settings.csvFileName;
+            string fullPath = Path.GetFullPath($"{CsvRoot}/{csvFileName}");
+
+            if (!File.Exists(fullPath))
             {
-                try
-                {
-                    if (request.result != UnityWebRequest.Result.Success)
-                    {
-                        completion.SetException(new Exception($"{request.responseCode} {request.error}"));
-                    }
-                    else
-                    {
-                        completion.SetResult(request.downloadHandler.text);
-                    }
-                }
-                finally
-                {
-                    request.Dispose();
-                }
-            };
+                report.AppendLine($"  [실패] {csvFileName} — 로컬에 파일이 없습니다");
+                return CompareResult.Failed;
+            }
 
-            return completion.Task;
+            SheetFetch fetch = await SheetDownloader.FetchAsync(settings.ExportUrl);
+            if (!fetch.Ok)
+            {
+                report.AppendLine($"  [실패] {csvFileName} — {fetch.Error}");
+                return CompareResult.Failed;
+            }
+
+            string difference = SheetDiff.Describe(SheetDiff.Normalize(File.ReadAllText(fullPath)), fetch.Text);
+            if (difference == null) return CompareResult.Same;
+
+            report.AppendLine($"  [다름] {csvFileName}");
+            report.Append(difference);
+            return CompareResult.Different;
         }
 
-        /// <summary>응답이 CSV가 아니라 HTML 페이지인지 판별합니다.</summary>
-        /// <param name="body">응답 본문입니다.</param>
-        /// <returns>HTML로 보이면 true입니다.</returns>
-        private static bool LooksLikeHtml(string body)
+        /// <summary>비교 결과를 콘솔과 대화상자로 알립니다.</summary>
+        /// <param name="report">모아 둔 상세 보고문입니다.</param>
+        /// <param name="same">동일한 표의 수입니다.</param>
+        /// <param name="different">다른 표의 수입니다.</param>
+        /// <param name="failed">비교하지 못한 표의 수입니다.</param>
+        private static void EmitCompareReport(StringBuilder report, int same, int different, int failed)
         {
-            if (string.IsNullOrEmpty(body)) return false;
+            string headline = $"{TAG} 비교 결과 — 동일 {same} / 다름 {different} / 실패 {failed}";
 
-            string trimmed = body.TrimStart();
-            string head = trimmed.Substring(0, Math.Min(200, trimmed.Length));
+            if (different == 0 && failed == 0)
+            {
+                Debug.Log($"{headline}\n  모든 표가 시트와 일치합니다. 받아도 잃을 것이 없습니다.");
+            }
+            else
+            {
+                Debug.LogWarning($"{headline}\n{report}");
+            }
 
-            return head.StartsWith("<!DOCTYPE", StringComparison.OrdinalIgnoreCase)
-                || head.StartsWith("<html", StringComparison.OrdinalIgnoreCase)
-                || head.IndexOf("<meta ", StringComparison.OrdinalIgnoreCase) >= 0;
+            EditorUtility.DisplayDialog("Google Sheet 비교",
+                $"동일 {same} / 다름 {different} / 실패 {failed}\n\n"
+                + (different + failed > 0
+                    ? "자세한 내용은 콘솔을 보세요.\n\n다름으로 나온 표는 받으면 로컬 내용이 시트 내용으로 바뀝니다."
+                    : "모든 표가 시트와 일치합니다."),
+                "확인");
         }
 
-        /// <summary>줄 끝을 LF로 통일하고 BOM을 제거합니다. (내용 비교와 기록 형식을 한 가지로 맞춤)</summary>
-        /// <param name="text">정규화할 문자열입니다.</param>
-        /// <returns>정규화된 문자열입니다.</returns>
-        private static string Normalize(string text)
-        {
-            return text.TrimStart('﻿').Replace("\r\n", "\n").Replace("\r", "\n").TrimEnd() + "\n";
-        }
-
-        /// <summary>첫 줄(헤더)을 반환합니다.</summary>
-        /// <param name="text">대상 문자열입니다.</param>
-        /// <returns>첫 줄입니다.</returns>
-        private static string FirstLine(string text)
-        {
-            int index = text.IndexOf('\n');
-            return index < 0 ? text : text.Substring(0, index);
-        }
+        // ====================================================================================================
+        // 보조
+        // ====================================================================================================
 
         /// <summary>
         /// 편집기가 만든 임시 파일인지 판별합니다.
@@ -722,12 +472,12 @@ namespace CsvPipeline
         {
             var list = new List<GoogleSheetSyncSettings>();
 
-            foreach (string guid in AssetDatabase.FindAssets("t:GoogleSheetSyncSettings"))
+            foreach (string path in CsvAssets.Current.FindPaths("t:GoogleSheetSyncSettings"))
             {
-                var settings = AssetDatabase.LoadAssetAtPath<GoogleSheetSyncSettings>(
-                    AssetDatabase.GUIDToAssetPath(guid));
-
-                if (settings != null) list.Add(settings);
+                if (CsvAssets.Current.Load(path, typeof(GoogleSheetSyncSettings)) is GoogleSheetSyncSettings settings)
+                {
+                    list.Add(settings);
+                }
             }
 
             list.Sort((a, b) => string.CompareOrdinal(a.csvFileName, b.csvFileName));
