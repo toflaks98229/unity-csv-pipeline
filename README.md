@@ -48,7 +48,7 @@ public class ClueData : ScriptableObject
 "com.toflaks.csv-pipeline": "https://github.com/toflaks98229/unity-csv-pipeline.git"
 ```
 
-버전을 고정하려면 `#v0.6.0` 처럼 태그를 붙입니다.
+버전을 고정하려면 `#v0.7.0` 처럼 태그를 붙입니다.
 서브모듈로 쓰려면 `Packages/com.toflaks.csv-pipeline` 경로에 두면 됩니다.
 
 ### ⚠️ 비공개 저장소라면 — 자격증명이 미리 있어야 합니다
@@ -182,11 +182,21 @@ public sealed class ClueImporter : AssetPostprocessor
 
 ---
 
-## 굽기 전에 확인하기
+## 창 하나에서 다 합니다
 
-**`Tools ▸ CSV Pipeline ▸ 미리보기 (굽지 않고 확인)`**
+**`Tools ▸ CSV Pipeline ▸ CSV 파이프라인 창`**
 
-표를 지금 구우면 무엇이 생기고·바뀌고·지워지는지 적용 전에 보여 줍니다. **아무것도 쓰지 않습니다.**
+갈래가 셋입니다.
+
+| 갈래 | 무엇을 |
+|---|---|
+| **표** | 표마다 지금 구우면 무엇이 달라지는지. 검색·필터·펼치기, 표별 `지금 굽기` |
+| **시트 연동** | 설정마다 상태 한 줄과 `받기`·`비교`·`선택` |
+| **설정** | 실제 적용되는 경로들과 Project Settings 로 가는 길 |
+
+**이 창은 사람이 버튼을 누를 때만 씁니다.** 열어 두는 것만으로는 아무것도 바뀌지 않습니다.
+
+표 갈래는 지금 구우면 무엇이 생기고·바뀌고·지워지는지 적용 전에 보여 줍니다.
 
 ```
 QuestData · Quests.csv                       생성 1 / 갱신 2 / 삭제 1 / 보존 1

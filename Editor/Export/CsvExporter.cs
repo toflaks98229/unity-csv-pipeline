@@ -21,7 +21,7 @@ namespace CsvPipeline
         // ====================================================================================================
 
         /// <summary>선언된 모든 표를 에셋에서 다시 뽑아 원본 파일에 씁니다. 바뀐 것만 확인 후 기록합니다.</summary>
-        [MenuItem("Tools/CSV Pipeline/ScriptableObject를 표로 내보내기")]
+        [MenuItem("Tools/CSV Pipeline/에셋을 표로 내보내기", false, 21)]
         public static void ExportAllMenu()
         {
             IReadOnlyList<CsvSchema> schemas = CsvSchema.All();

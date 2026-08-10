@@ -42,7 +42,7 @@ namespace CsvPipeline
         // ====================================================================================================
 
         /// <summary>설정이 갖춰진 모든 CSV를 받아옵니다.</summary>
-        [MenuItem("Tools/CSV Pipeline/Google Sheet에서 받기")]
+        [MenuItem("Tools/CSV Pipeline/Google Sheet에서 받기", false, 40)]
         public static void PullAllMenu()
         {
             List<GoogleSheetSyncSettings> all = FindAllSettings();
@@ -51,7 +51,7 @@ namespace CsvPipeline
                 EditorUtility.DisplayDialog(
                     "동기화 설정이 없습니다",
                     $"설정 에셋이 하나도 없습니다.\n\n{SettingsRoot} 폴더를 확인하거나,\n"
-                    + "메뉴 Tools ▸ CSV Pipeline ▸ Google Sheet 설정 에셋 만들기 를 실행하세요.\n\n"
+                    + "메뉴 Tools ▸ CSV Pipeline ▸ Google Sheet 설정 만들기 를 실행하세요.\n\n"
                     + $"CSV 폴더 위치는 {SETTINGS_HINT} 에서 바꿉니다.",
                     "확인");
                 return;
@@ -74,7 +74,7 @@ namespace CsvPipeline
         /// <summary>
         /// 시트와 로컬 CSV의 차이를 조사해 보고만 합니다. <b>파일을 쓰지 않습니다.</b>
         /// </summary>
-        [MenuItem("Tools/CSV Pipeline/Google Sheet와 비교만 (쓰지 않음)")]
+        [MenuItem("Tools/CSV Pipeline/Google Sheet와 비교만", false, 41)]
         public static void CompareAllMenu()
         {
             var ready = FindAllSettings().FindAll(s => s.enabled && s.IsConfigured);
@@ -90,7 +90,6 @@ namespace CsvPipeline
 
         /// <summary>
         /// 설정 하나만 시트와 비교해 결과를 콘솔에 보고합니다. <b>파일을 쓰지 않습니다.</b>
-        /// 인스펙터에서 "이 표만 비교"로 부릅니다.
         /// </summary>
         /// <param name="settings">비교할 설정입니다.</param>
         public static void CompareOne(GoogleSheetSyncSettings settings)
@@ -100,8 +99,20 @@ namespace CsvPipeline
             _ = CompareAllAsync(new List<GoogleSheetSyncSettings> { settings });
         }
 
+        /// <summary>설정 하나만 시트에서 받아옵니다. 내용이 달라졌을 때만 기록합니다.</summary>
+        /// <param name="settings">받아올 설정입니다.</param>
+        public static void PullOne(GoogleSheetSyncSettings settings)
+        {
+            if (settings == null || !settings.IsConfigured) return;
+
+            _ = PullManyAsync(new List<GoogleSheetSyncSettings> { settings }, interactive: true);
+        }
+
+        /// <summary>프로젝트의 모든 연동 설정입니다. 파일 이름 순입니다.</summary>
+        /// <returns>찾은 설정 에셋 목록입니다.</returns>
+        public static List<GoogleSheetSyncSettings> FindAll() => FindAllSettings();
+
         /// <summary>설정 에셋 폴더를 프로젝트 창에서 선택합니다.</summary>
-        [MenuItem("Tools/CSV Pipeline/Google Sheet 설정 폴더 열기")]
         public static void SelectSettingsFolderMenu()
         {
             var folder = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(SettingsRoot);
@@ -109,7 +120,7 @@ namespace CsvPipeline
             {
                 EditorUtility.DisplayDialog("폴더가 없습니다",
                     $"{SettingsRoot} 폴더가 없습니다.\n\n"
-                    + "메뉴 Tools ▸ CSV Pipeline ▸ Google Sheet 설정 에셋 만들기 를 먼저 실행하세요.", "확인");
+                    + "메뉴 Tools ▸ CSV Pipeline ▸ Google Sheet 설정 만들기 를 먼저 실행하세요.", "확인");
                 return;
             }
 
@@ -120,7 +131,7 @@ namespace CsvPipeline
         /// <summary>
         /// 설정 에셋이 없는 CSV마다 설정 에셋을 하나씩 만듭니다. (이미 있는 것은 건드리지 않습니다)
         /// </summary>
-        [MenuItem("Tools/CSV Pipeline/Google Sheet 설정 에셋 만들기")]
+        [MenuItem("Tools/CSV Pipeline/Google Sheet 설정 만들기", false, 42)]
         public static void CreateMissingSettingsMenu()
         {
             string csvRoot = CsvRoot;

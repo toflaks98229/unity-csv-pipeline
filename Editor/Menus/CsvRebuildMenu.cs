@@ -23,7 +23,7 @@ namespace CsvPipeline
         public static event Action AfterRebuildAll;
 
         /// <summary>CSV 루트의 모든 CSV를 강제 재임포트합니다.</summary>
-        [MenuItem("Tools/CSV Pipeline/Rebuild All Data")]
+        [MenuItem("Tools/CSV Pipeline/전체 다시 굽기", false, 20)]
         public static void RebuildAllMenu()
         {
             int count = RebuildAll();

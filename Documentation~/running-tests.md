@@ -44,13 +44,19 @@ SB=/tmp/csvsandbox
 
 재사용하다 보면 샌드박스가 이상해집니다. 실제로 겪은 것들입니다.
 
-| 증상 | 실제 원인 |
-|---|---|
-| `Couldn't set project path to: <cwd>/<경로>` | `Assets` 폴더가 사라져 유효한 프로젝트로 인식되지 않음 |
-| `The type or namespace name 'NUnit' could not be found` | `manifest.json` 에 존재하지 않는 `file:` 의존성이 끼어 패키지 해석이 통째로 실패 |
+| 증상 | 실제 원인 | 처방 |
+|---|---|---|
+| `Couldn't set project path to: <cwd>/<경로>` | `Assets` 폴더가 사라져 유효한 프로젝트로 인식되지 않음 | `mkdir Assets` |
+| `The type or namespace name 'NUnit' could not be found` | 외부 도구가 `manifest.json` 에 **상대 경로 `file:` 의존성**을 끼워 넣어 패키지 해석이 통째로 실패 | 그 항목 제거 **+ `packages-lock.json` 삭제 + `Library/PackageCache`·`ScriptAssemblies` 비우기** |
 
-**둘 다 패키지 코드와 무관합니다.** 원인을 좇기 전에 `rm -rf` 후 다시 만들어 보십시오.
-재생성은 2~3분이면 끝나고, 그러고도 실패하면 그때가 진짜입니다.
+**둘 다 패키지 코드와 무관합니다.**
+
+두 번째는 `manifest.json` 만 고쳐서는 풀리지 않습니다. **잠금 파일이 깨진 해석을 그대로 붙들고
+있습니다.** 실제로 Loupedeck용 `com.logi.unity-bridge` 플러그인이 실행 중인 Unity 프로젝트마다
+자기를 끼워 넣어 이 증상을 반복해서 만들었습니다. 검사 스크립트가 매번 걷어내게 해 두는 편이 낫습니다.
+
+그러고도 실패하면 `rm -rf` 후 다시 만들어 보십시오. 재생성은 2~3분이면 끝나고,
+그러고도 실패하면 그때가 진짜입니다.
 
 경로는 `cygpath -w` 로 Windows 형식으로 넘기십시오. Git Bash에서 그냥 넘기면 앞에 현재
 디렉터리가 붙어 버립니다.
