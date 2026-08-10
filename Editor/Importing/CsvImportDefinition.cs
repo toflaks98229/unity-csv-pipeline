@@ -84,6 +84,13 @@ namespace CsvPipeline
         protected bool IsCancelled => _cancelled;
 
         /// <summary>
+        /// 남은 단위를 굽지 않고 이번 굽기를 멈춥니다. <b>정리 단계도 함께 건너뜁니다.</b>
+        /// 더 진행해 봐야 결과가 틀어질 조건(참조 원본이 사라졌다든지)을 굽는 중에 알아챘을 때 쓰십시오.
+        /// 표의 절반만 반영된 상태에서 나머지를 지우면 사람이 되돌릴 수 없습니다.
+        /// </summary>
+        protected void CancelCurrentRun() => _cancelled = true;
+
+        /// <summary>
         /// 지정 경로의 표를 읽어 굽고 결과를 보고합니다. 메뉴에서 직접 부를 수도 있습니다.
         /// </summary>
         /// <param name="csvPath">읽을 표의 에셋 경로입니다.</param>
@@ -124,10 +131,82 @@ namespace CsvPipeline
             return report;
         }
 
+        // ====================================================================================================
+        // 굽기 골격
+        // ====================================================================================================
+
+        /// <summary>표에서 사라진 산출물을 무엇으로 대조할지입니다. 기본은 정리하지 않음입니다.</summary>
+        protected virtual CsvReconcileMode ReconcileMode => CsvReconcileMode.None;
+
+        /// <summary>정리 대상을 찾을 검색 필터입니다. <see cref="ReconcileMode"/>가 None이 아니면 필요합니다.</summary>
+        protected virtual string ReconcileTypeFilter => null;
+
+        /// <summary>정리할 산출물 폴더입니다. 기본은 <see cref="OutputFolder"/>입니다.</summary>
+        protected virtual string ReconcileFolder => OutputFolder;
+
+        /// <summary>
+        /// 단위마다 <paramref name="bake"/>를 부르고, 진행·취소·집계·정리를 한 자리에서 처리합니다.
+        /// <b>정리는 취소되지 않았을 때만 합니다.</b> 취소되면 아직 읽지 않은 단위가 남아 있어,
+        /// 그 산출물을 "표에서 사라진 것"으로 오해해 지우게 됩니다. 이 규칙을 파생 클래스마다
+        /// 다시 적으면 한 곳만 빠뜨려도 취소 버튼이 삭제 버튼이 되므로 여기에 둡니다.
+        /// </summary>
+        /// <typeparam name="TUnit">구울 단위의 타입입니다. (행 또는 그룹 식별자)</typeparam>
+        /// <param name="units">구울 단위들입니다.</param>
+        /// <param name="report">건수와 문제를 기록할 리포트입니다.</param>
+        /// <param name="bake">단위 하나를 굽고 결과를 돌려주는 함수입니다.</param>
+        protected void BakeEach<TUnit>(IReadOnlyList<TUnit> units, CsvImportReport report,
+                                       Func<TUnit, CsvImportReport, CsvBakeOutcome> bake)
+        {
+            var validNames = new HashSet<string>();
+            var validPaths = new HashSet<string>();
+
+            for (int i = 0; i < units.Count; i++)
+            {
+                if (ReportRowProgress(i, units.Count)) break;
+
+                CsvBakeOutcome outcome = bake(units[i], report);
+
+                switch (outcome.Kind)
+                {
+                    case CsvBakeKind.Created: report.CountCreated(); break;
+                    case CsvBakeKind.Updated: report.CountUpdated(); break;
+                    default: report.CountSkipped(); continue;
+                }
+
+                if (outcome.Name != null) validNames.Add(outcome.Name);
+                if (outcome.Path != null) validPaths.Add(outcome.Path);
+            }
+
+            if (IsCancelled) return;
+
+            Reconcile(validNames, validPaths, report);
+        }
+
+        /// <summary>
+        /// 이번 표가 확정하지 않은 산출물을 정리합니다. 참조가 남은 것은 보존됩니다.
+        /// </summary>
+        /// <param name="validNames">이번에 확정된 에셋 이름들입니다.</param>
+        /// <param name="validPaths">이번에 확정된 에셋 경로들입니다.</param>
+        /// <param name="report">결과를 기록할 리포트입니다.</param>
+        private void Reconcile(HashSet<string> validNames, HashSet<string> validPaths, CsvImportReport report)
+        {
+            CsvReconcileMode mode = ReconcileMode;
+            if (mode == CsvReconcileMode.None) return;
+
+            string folder = ReconcileFolder;
+            string filter = ReconcileTypeFilter;
+            if (string.IsNullOrEmpty(folder) || string.IsNullOrEmpty(filter)) return;
+
+            if (mode == CsvReconcileMode.ByPath)
+                CsvAssetPipeline.ReconcileFolderByPath(folder, filter, validPaths, LogTag, report);
+            else
+                CsvAssetPipeline.ReconcileFolderByName(folder, filter, validNames, LogTag, report);
+        }
+
         /// <summary>
         /// 행 처리 진행을 알리고 취소 여부를 돌려줍니다. 큰 표에서만 막대를 띄웁니다.
-        /// <b>true를 받으면 루프를 즉시 빠져나가고 정리 단계도 건너뛰어야 합니다.</b>
-        /// 아직 읽지 않은 행의 에셋을 "표에서 사라진 것"으로 오해해 지우면 안 되기 때문입니다.
+        /// <b>true를 받으면 루프를 즉시 빠져나가야 합니다.</b> 정리를 건너뛰는 것은
+        /// <see cref="BakeEach{TUnit}"/>가 대신 지킵니다.
         /// </summary>
         /// <param name="index">지금 처리할 행의 번호입니다. (0부터)</param>
         /// <param name="total">전체 행 수입니다.</param>

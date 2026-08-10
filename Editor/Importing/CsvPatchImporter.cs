@@ -40,34 +40,37 @@ namespace CsvPipeline
         {
             Dictionary<string, T> byKey = BuildIndex();
 
-            for (int i = 0; i < table.Rows.Count; i++)
+            BakeEach(table.Rows, report, (row, rep) => PatchOne(row, byKey, rep));
+        }
+
+        /// <summary>행 하나를 이미 있는 에셋에 반영합니다.</summary>
+        /// <param name="row">읽을 행입니다.</param>
+        /// <param name="byKey">조회 키로 색인된 에셋들입니다.</param>
+        /// <param name="report">문제를 기록할 리포트입니다.</param>
+        /// <returns>구운 결과입니다.</returns>
+        private CsvBakeOutcome PatchOne(CsvRow row, Dictionary<string, T> byKey, CsvImportReport report)
+        {
+            string key = GetRowKey(row);
+            if (string.IsNullOrEmpty(key))
             {
-                if (ReportRowProgress(i, table.Rows.Count)) break;
-
-                CsvRow row = table.Rows[i];
-                string key = GetRowKey(row);
-                if (string.IsNullOrEmpty(key))
-                {
-                    report.CountSkipped();
-                    report.Warn("조회 키가 비어 있어 건너뜁니다.", row.LineNumber);
-                    continue;
-                }
-
-                if (!byKey.TryGetValue(key, out T asset))
-                {
-                    string hint = MissingAssetHint;
-                    report.CountSkipped();
-                    report.Warn($"'{key}'에 해당하는 {typeof(T).Name}를 찾지 못했습니다."
-                                + (string.IsNullOrEmpty(hint) ? string.Empty : $" {hint}"), row.LineNumber);
-                    continue;
-                }
-
-                var serialized = new SerializedObject(asset);
-                Patch(row, asset, serialized);
-                serialized.ApplyModifiedPropertiesWithoutUndo();
-                CsvAssets.Current.MarkDirty(asset);
-                report.CountUpdated();
+                report.Warn("조회 키가 비어 있어 건너뜁니다.", row.LineNumber);
+                return CsvBakeOutcome.Skipped();
             }
+
+            if (!byKey.TryGetValue(key, out T asset))
+            {
+                string hint = MissingAssetHint;
+                report.Warn($"'{key}'에 해당하는 {typeof(T).Name}를 찾지 못했습니다."
+                            + (string.IsNullOrEmpty(hint) ? string.Empty : $" {hint}"), row.LineNumber);
+                return CsvBakeOutcome.Skipped();
+            }
+
+            var serialized = new SerializedObject(asset);
+            Patch(row, asset, serialized);
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            CsvAssets.Current.MarkDirty(asset);
+
+            return CsvBakeOutcome.Updated();
         }
 
         /// <summary>

@@ -23,11 +23,16 @@ namespace CsvPipeline
         /// <summary>행마다 에셋을 굽고, 표에서 사라진 산출물을 정리합니다.</summary>
         /// <param name="table">파싱된 표입니다.</param>
         /// <param name="report">건수와 문제를 기록할 리포트입니다.</param>
+        /// <summary>선언이 정리를 허용할 때만, 에셋 이름으로 대조해 정리합니다.</summary>
+        protected override CsvReconcileMode ReconcileMode
+            => _schema.Declaration.DeleteMissing ? CsvReconcileMode.ByName : CsvReconcileMode.None;
+
+        /// <summary>정리 대상을 찾을 검색 필터입니다.</summary>
+        protected override string ReconcileTypeFilter => $"t:{_schema.AssetType.Name}";
+
         protected override void Process(CsvTable table, CsvImportReport report)
         {
             string folder = _schema.ResolveOutputFolder();
-            string idColumn = _schema.Declaration.IdColumn;
-
             if (string.IsNullOrEmpty(folder))
             {
                 report.Error("산출물 폴더를 정하지 못했습니다. [CsvAsset]의 OutputFolder를 지정하십시오.");
@@ -36,54 +41,48 @@ namespace CsvPipeline
 
             CsvAssetPipeline.EnsureFolder(folder);
 
-            var binder = new CsvValueBinder();
-            var validNames = new HashSet<string>();
-
             // 표에 없는 열에 연결된 필드는 매 행마다 경고할 필요가 없어 한 번만 알립니다.
             WarnUnmatchedColumns(table, report);
 
-            for (int i = 0; i < table.Rows.Count; i++)
+            var binder = new CsvValueBinder();
+
+            BakeEach(table.Rows, report, (row, rep) => BakeOne(row, table, folder, binder, rep));
+        }
+
+        /// <summary>행 하나를 에셋으로 굽습니다.</summary>
+        /// <param name="row">읽을 행입니다.</param>
+        /// <param name="table">표 전체입니다. 열 존재 확인에 씁니다.</param>
+        /// <param name="folder">산출물 폴더입니다.</param>
+        /// <param name="binder">값 변환기입니다.</param>
+        /// <param name="report">문제를 기록할 리포트입니다.</param>
+        /// <returns>구운 결과입니다.</returns>
+        private CsvBakeOutcome BakeOne(CsvRow row, CsvTable table, string folder,
+                                       CsvValueBinder binder, CsvImportReport report)
+        {
+            string idColumn = _schema.Declaration.IdColumn;
+            string id = row.GetString(idColumn);
+
+            if (string.IsNullOrEmpty(id))
             {
-                if (ReportRowProgress(i, table.Rows.Count)) break;
-
-                CsvRow row = table.Rows[i];
-                string id = row.GetString(idColumn);
-                if (string.IsNullOrEmpty(id))
-                {
-                    report.CountSkipped();
-                    report.Warn($"'{idColumn}'이(가) 비어 있어 건너뜁니다.", row.LineNumber, idColumn);
-                    continue;
-                }
-
-                string path = $"{folder}/{id}.asset";
-                ScriptableObject asset = CsvAssetPipeline.CreateOrLoad(_schema.AssetType, path, out bool created);
-                if (asset == null)
-                {
-                    report.CountSkipped();
-                    report.Error($"{_schema.AssetType.Name} 에셋을 만들지 못했습니다: {path}", row.LineNumber);
-                    continue;
-                }
-
-                var serialized = new SerializedObject(asset);
-                BakeRow(row, table, serialized, binder, report, asset);
-                serialized.ApplyModifiedPropertiesWithoutUndo();
-                CsvAssets.Current.MarkDirty(asset);
-                CsvAssetPipeline.FlushIfCreated(asset, created);
-
-                if (created) report.CountCreated();
-                else report.CountUpdated();
-
-                validNames.Add(id);
+                report.Warn($"'{idColumn}'이(가) 비어 있어 건너뜁니다.", row.LineNumber, idColumn);
+                return CsvBakeOutcome.Skipped();
             }
 
-            // 취소됐으면 아직 읽지 않은 행이 남아 있어, 그 에셋을 사라진 것으로 오해할 수 있습니다.
-            if (IsCancelled) return;
-
-            if (_schema.Declaration.DeleteMissing)
+            string path = $"{folder}/{id}.asset";
+            ScriptableObject asset = CsvAssetPipeline.CreateOrLoad(_schema.AssetType, path, out bool created);
+            if (asset == null)
             {
-                CsvAssetPipeline.ReconcileFolderByName(
-                    folder, $"t:{_schema.AssetType.Name}", validNames, LogTag, report);
+                report.Error($"{_schema.AssetType.Name} 에셋을 만들지 못했습니다: {path}", row.LineNumber);
+                return CsvBakeOutcome.Skipped();
             }
+
+            var serialized = new SerializedObject(asset);
+            BakeRow(row, table, serialized, binder, report, asset);
+            serialized.ApplyModifiedPropertiesWithoutUndo();
+            CsvAssets.Current.MarkDirty(asset);
+            CsvAssetPipeline.FlushIfCreated(asset, created);
+
+            return CsvBakeOutcome.Baked(created, id, path);
         }
 
         /// <summary>행 하나의 모든 열을 에셋에 씁니다.</summary>

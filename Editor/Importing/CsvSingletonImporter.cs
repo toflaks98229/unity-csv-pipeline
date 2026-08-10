@@ -37,14 +37,13 @@ namespace CsvPipeline
 
             var serialized = new SerializedObject(asset);
 
-            for (int i = 0; i < table.Rows.Count; i++)
-            {
-                if (ReportRowProgress(i, table.Rows.Count)) break;
+            BakeEach(table.Rows, report,
+                     (row, _) => BakeRow(row, asset, serialized)
+                         ? CsvBakeOutcome.Updated()
+                         : CsvBakeOutcome.Skipped());
 
-                if (BakeRow(table.Rows[i], asset, serialized)) report.CountUpdated();
-                else report.CountSkipped();
-            }
-
+            // 취소돼도 여기까지 읽은 값은 반영합니다. 이 임포터는 지우지 않으므로 절반만 반영돼도
+            // 잃는 것이 없고, 되돌리면 이미 구운 행까지 버리게 됩니다.
             serialized.ApplyModifiedPropertiesWithoutUndo();
             CsvAssets.Current.MarkDirty(asset);
         }
