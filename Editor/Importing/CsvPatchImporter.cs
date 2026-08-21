@@ -70,7 +70,9 @@ namespace CsvPipeline
             serialized.ApplyModifiedPropertiesWithoutUndo();
             CsvAssets.Current.MarkDirty(asset);
 
-            return CsvBakeOutcome.Updated();
+            // 이 임포터는 정리를 하지 않아 이름·경로가 대조에 쓰이지 않습니다. 그래도 넘기는 것은
+            // 같은 에셋을 두 행이 덮어쓰는 것을 골격이 알아채게 하기 위해서입니다.
+            return CsvBakeOutcome.Updated(key, CsvAssets.Current.PathOf(asset), row.LineNumber);
         }
 
         /// <summary>
@@ -81,6 +83,7 @@ namespace CsvPipeline
         protected override void BuildPlan(CsvTable table, CsvImportPlan plan)
         {
             Dictionary<string, T> byKey = BuildIndex();
+            var claims = new CsvIdClaims();
 
             foreach (CsvRow row in table.Rows)
             {
@@ -98,7 +101,10 @@ namespace CsvPipeline
                     continue;
                 }
 
-                plan.Add(CsvChangeKind.Update, CsvAssets.Current.PathOf(asset), row.LineNumber);
+                string path = CsvAssets.Current.PathOf(asset);
+                ClaimForPlan(claims, plan, path, key, row.LineNumber);
+
+                plan.Add(CsvChangeKind.Update, path, row.LineNumber);
             }
         }
 

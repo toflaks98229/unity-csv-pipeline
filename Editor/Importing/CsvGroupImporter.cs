@@ -75,6 +75,14 @@ namespace CsvPipeline
                     continue;
                 }
 
+                string rejected = CsvAssetId.Reject(id);
+                if (rejected != null)
+                {
+                    report.CountSkipped();
+                    report.Warn(CsvAssetId.Describe(id, rejected), row.LineNumber);
+                    continue;
+                }
+
                 if (!groups.TryGetValue(id, out List<CsvRow> bucket))
                 {
                     bucket = new List<CsvRow>();
@@ -100,7 +108,10 @@ namespace CsvPipeline
             CsvAssets.Current.MarkDirty(asset);
             CsvAssetPipeline.FlushIfCreated(asset, created);
 
-            return CsvBakeOutcome.Baked(created, id);
+            // 그룹의 첫 행을 자리로 씁니다. 같은 식별자의 되풀이는 여기 오기 전에 한 그룹으로 묶이므로,
+            // 이 자리에서 부딪치는 것은 대소문자만 다른 식별자뿐입니다.
+            return CsvBakeOutcome.Baked(created, id, AssetPathFor(id),
+                                        rows.Count > 0 ? rows[0].LineNumber : 0);
         }
 
         /// <summary>그룹마다 만들지 갱신할지, 그리고 무엇이 사라질지를 계산합니다. 쓰지는 않습니다.</summary>
@@ -109,6 +120,7 @@ namespace CsvPipeline
         protected override void BuildPlan(CsvTable table, CsvImportPlan plan)
         {
             var seen = new HashSet<string>();
+            var claims = new CsvIdClaims();
 
             foreach (CsvRow row in table.Rows)
             {
@@ -119,11 +131,23 @@ namespace CsvPipeline
                     continue;
                 }
 
+                string rejected = CsvAssetId.Reject(id);
+                if (rejected != null)
+                {
+                    plan.Add(CsvChangeKind.Skip, null, row.LineNumber, CsvAssetId.Describe(id, rejected));
+                    plan.Issues.Add(new CsvIssue(CsvIssueSeverity.Warning,
+                                                 CsvAssetId.Describe(id, rejected), row.LineNumber));
+                    continue;
+                }
+
                 // 같은 그룹의 두 번째 행부터는 에셋을 더 만들지 않습니다.
                 if (!seen.Add(id)) continue;
 
                 string path = AssetPathFor(id);
                 bool exists = CsvAssets.Current.Load(path, typeof(T)) != null;
+
+                ClaimForPlan(claims, plan, path, id, row.LineNumber);
+
                 plan.Add(exists ? CsvChangeKind.Update : CsvChangeKind.Create, path, row.LineNumber);
             }
 

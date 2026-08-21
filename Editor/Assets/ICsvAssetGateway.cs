@@ -75,9 +75,20 @@ namespace CsvPipeline
         /// <summary>
         /// 후보 중 <b>다른 곳에서 참조 중인 것</b>을 가려냅니다.
         /// 참조가 남은 에셋을 지우면 GUID가 사라져 git으로도 배선이 돌아오지 않습니다.
+        /// <b><see cref="ReferenceScanBlocked"/>가 null이 아니면 이 결과를 믿어서는 안 됩니다.</b>
         /// </summary>
         /// <param name="candidates">조사할 에셋 경로들입니다.</param>
         /// <returns>참조가 발견된 경로들입니다.</returns>
         HashSet<string> FindReferenced(IReadOnlyList<string> candidates);
+
+        /// <summary>
+        /// 참조 조사를 믿을 수 없으면 그 이유입니다. 믿을 수 있으면 null입니다.
+        /// <para>
+        /// 조사가 <b>틀린 답을 자신 있게 내놓는</b> 상황이 있습니다. 그때 "참조 없음"을 그대로 받으면
+        /// 씬이 쓰고 있는 에셋을 경고 없이 지우게 되고, GUID가 사라져 git으로도 되돌릴 수 없습니다.
+        /// 그래서 <b>조사할 수 없다는 사실 자체</b>를 값으로 돌려주고, 그럴 때는 아무것도 지우지 않습니다.
+        /// </para>
+        /// </summary>
+        string ReferenceScanBlocked { get; }
     }
 }

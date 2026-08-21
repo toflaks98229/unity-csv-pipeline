@@ -169,6 +169,28 @@ namespace CsvPipeline
         public void SaveAll() => AssetDatabase.SaveAssets();
 
         /// <summary>
+        /// 참조 조사를 믿을 수 없으면 그 이유입니다. 믿을 수 있으면 null입니다.
+        /// <para>
+        /// 이 조사는 씬·프리팹·에셋을 <b>글자로 읽어</b> GUID 문자열을 찾습니다. 그래서 프로젝트의
+        /// Asset Serialization이 <c>Force Text</c>가 아니면 GUID가 글자로 존재하지 않아 <b>무엇을 찾든
+        /// 언제나 "참조 없음"</b>이 나옵니다. 그 답을 그대로 받으면 씬이 쓰고 있는 에셋을 경고 없이
+        /// 지우게 되고, 그러면 GUID가 사라져 git으로 파일을 되돌려도 배선이 돌아오지 않습니다.
+        /// </para>
+        /// <para>안전장치가 꺼진 줄 모르는 것보다 <b>정리를 멈추는 편</b>이 낫습니다.</para>
+        /// </summary>
+        public string ReferenceScanBlocked
+        {
+            get
+            {
+                if (EditorSettings.serializationMode == SerializationMode.ForceText) return null;
+
+                return "Asset Serialization이 Force Text가 아니라 참조를 조사할 수 없습니다. "
+                     + "무엇이 이 에셋을 쓰고 있는지 알 수 없으므로 지우지 않고 남깁니다. "
+                     + "Project Settings ▸ Editor ▸ Asset Serialization을 Force Text로 두면 조사할 수 있습니다.";
+            }
+        }
+
+        /// <summary>
         /// 후보들의 GUID가 프로젝트의 씬·프리팹·에셋 어딘가에 등장하는지 한 번의 훑기로 조사합니다.
         /// </summary>
         /// <param name="candidates">조사할 에셋 경로들입니다.</param>

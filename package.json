@@ -1,6 +1,6 @@
 {
   "name": "com.toflaks.csv-pipeline",
-  "version": "0.9.1",
+  "version": "0.10.0",
   "displayName": "CSV Pipeline",
   "description": "Bakes CSV rows into ScriptableObject assets on import, and optionally pulls those CSVs from Google Sheets. Editor-only; never included in player builds.",
   "unity": "2022.3",
