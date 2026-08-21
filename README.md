@@ -23,6 +23,8 @@ public class ClueData : ScriptableObject
 이게 전부입니다. `Clues.csv`를 저장하면 행마다 `ClueData` 에셋이 생기고 갱신됩니다.
 
 > 동작하는 예제가 패키지에 들어 있습니다. **Package Manager ▸ CSV Pipeline ▸ Samples ▸ Quick Start**
+>
+> **English**: see [`Documentation~/manual-en.md`](Documentation~/manual-en.md).
 
 ---
 
@@ -377,16 +379,17 @@ Google Sheets ──(에디터가 주기적으로 당김)──▶ CSV 루트/*.
 
 | 메뉴 | 하는 일 |
 |---|---|
-| `Tools ▸ CSV Pipeline ▸ 미리보기 (굽지 않고 확인)` | 굽기 전에 무엇이 달라지는지 확인 |
-| `Tools ▸ CSV Pipeline ▸ Rebuild All Data` | CSV 루트의 전 표를 강제 재임포트 |
+| `Tools ▸ CSV Pipeline ▸ CSV 파이프라인` | 파이프라인 창 열기 |
+| `Tools ▸ CSV Pipeline ▸ 전체 다시 굽기` | CSV 루트의 전 표를 강제 재임포트 |
+| `Tools ▸ CSV Pipeline ▸ 에셋을 표로 내보내기` | 에셋에서 표를 다시 뽑음 |
 | `Tools ▸ CSV Pipeline ▸ 표와 산출물이 어긋나는지 확인` | 표를 고치고 굽기를 잊지 않았는지 확인 |
-| `Tools ▸ CSV Pipeline ▸ ScriptableObject를 표로 내보내기` | 에셋에서 표를 다시 뽑음 |
 | `Tools ▸ CSV Pipeline ▸ Google Sheet에서 받기` | 켜진 항목을 받아 **바뀐 파일만** 기록·재임포트 |
 | `Tools ▸ CSV Pipeline ▸ Google Sheet와 비교만` | 차이만 보고, 파일은 쓰지 않음 |
-| `Tools ▸ CSV Pipeline ▸ Google Sheet 설정 에셋 만들기` | 설정이 없는 표에 에셋 생성 |
-| `Tools ▸ CSV Pipeline ▸ Google Sheet 설정 폴더 열기` | 설정 폴더 선택 |
+| `Tools ▸ CSV Pipeline ▸ Google Sheet 설정 만들기` | 설정이 없는 표에 에셋 생성 |
 
-`Rebuild All Data` 가 필요한 이유는 `AssetPostprocessor` 가 파일이 **변경될 때만** 발화하기 때문입니다.
+미리보기·모두 펼치기·설정 폴더 열기는 메뉴가 아니라 **창 안에** 있습니다.
+
+`전체 다시 굽기` 가 필요한 이유는 `AssetPostprocessor` 가 파일이 **변경될 때만** 발화하기 때문입니다.
 임포터를 고친 뒤 산출물을 다시 굽거나, 새 표를 처음 굽고 싶을 때 씁니다.
 끝난 뒤 `CsvRebuildMenu.AfterRebuildAll` 이벤트가 불리므로, 프로젝트별 마무리 작업을 붙일 수 있습니다.
 
@@ -463,6 +466,35 @@ Unity -batchmode -projectPath . -executeMethod CsvPipeline.CsvDriftCheck.Run
 어긋난 표가 있으면 **종료 코드 1** 과 함께 어느 표가 왜 어긋났는지를 로그에 남깁니다.
 **아무것도 쓰지 않습니다.** 판정은 파이프라인 창의 것과 같아서, 화면에서 "바뀌는 것 없음" 인 표가
 CI 에서 실패하는 일은 없습니다.
+
+---
+
+## 고지
+
+**네트워크.** 구글 시트 연동은 선택 기능이고, 켰을 때만 나가는 요청이 생깁니다.
+접속하는 곳은 **둘뿐**입니다.
+
+| 호스트 | 언제 |
+|---|---|
+| `docs.google.com` | 시트 내용을 받을 때 |
+| `oauth2.googleapis.com` | 서비스 계정을 설정했을 때, 액세스 토큰을 받으러 |
+
+**연동 설정 에셋을 만들어 켜기 전에는 아무 데도 아무것도 보내지 않습니다.**
+자동 받기는 기본이 꺼짐(`autoPull = false`)입니다. 원격 측정이나 분석은 하지 않습니다.
+(창의 `?` 단추는 브라우저로 이 저장소의 README 를 엽니다 — 사람이 누를 때만입니다)
+
+**자격증명 보관.** 비공개 시트를 쓸 때 **여러분이 지정한 경로**의 구글 서비스 계정 JSON 키를 읽습니다.
+키는 **프로젝트로 복사되지 않고, 빌드에 들어가지 않으며, 로그에 실리지 않습니다.**
+설정 에셋에 남는 것은 파일 경로뿐입니다. 키 파일을 `Assets` 밖에 두고 버전 관리에서 빼는 것은
+쓰는 쪽의 몫이며, 그 방법은 위 [비공개 시트로 쓰기](#비공개-시트로-쓰기) 에 적어 두었습니다.
+
+**외부 의존성.** 없습니다. 패키지 의존성이 하나도 없고 남의 코드를 담고 있지 않습니다.
+
+**AI 보조.** 이 패키지는 AI 도구의 보조를 받아 작성했습니다. 코드는 사람이 검토했고,
+난독화하지 않았으며, 함께 들어 있는 자동 검사가 덮고 있습니다.
+
+> 에셋스토어에 낸다면 이 네 가지는 **스토어 설명란에도** 있어야 합니다.
+> (네트워크 사용·키 보관 방식·AI 고지)
 
 ---
 
