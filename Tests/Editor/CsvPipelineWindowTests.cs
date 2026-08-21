@@ -3,6 +3,7 @@ using System.Reflection;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace CsvPipeline.Tests
 {
@@ -51,6 +52,10 @@ namespace CsvPipeline.Tests
                 "RepaintImmediately", BindingFlags.NonPublic | BindingFlags.Instance);
 
             if (repaint == null) return false;
+
+            // 그래픽 장치가 없는 실행(컨테이너 CI 등)에서는 창을 그릴 수 없습니다.
+            // 여기서 미리 물러서지 않으면 그리기가 터지고, 그것을 진짜 결함과 구분할 수 없게 됩니다.
+            if (SystemInfo.graphicsDeviceType == GraphicsDeviceType.Null) return false;
 
             try
             {

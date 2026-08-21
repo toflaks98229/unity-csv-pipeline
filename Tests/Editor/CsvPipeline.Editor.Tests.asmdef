@@ -2,6 +2,7 @@
     "name": "CsvPipeline.Editor.Tests",
     "rootNamespace": "CsvPipeline.Tests",
     "references": [
+        "CsvPipeline",
         "CsvPipeline.Editor",
         "UnityEngine.TestRunner",
         "UnityEditor.TestRunner"

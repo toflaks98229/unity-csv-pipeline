@@ -65,7 +65,61 @@ SB=/tmp/csvsandbox
 경로는 `cygpath -w` 로 Windows 형식으로 넘기십시오. Git Bash에서 그냥 넘기면 앞에 현재
 디렉터리가 붙어 버립니다.
 
-## 3. 컴파일만 빠르게 보기
+## 3. CI에서 돌리기
+
+`.github/workflows/tests.yml` 이 밀 때마다 EditMode 검사를 돌립니다.
+**선언한 최소 판(2022.3)과 Unity 6 LTS 양쪽**에서 돌리는 것이 요점입니다 —
+`package.json` 의 `unity` 필드는 지켜지지 않으면 그냥 거짓말이 됩니다.
+
+이 저장소에는 `Assets/` 도 `ProjectSettings/` 도 없습니다. **패키지이지 프로젝트가 아니기**
+때문입니다. `.ci/project/` 가 Unity에게 열어 줄 최소한의 껍데기이고, 그 `manifest.json` 이
+저장소 루트를 로컬 패키지로 뭅니다. 자세한 것은 `.ci/README.md` 에 있습니다.
+
+### 처음 한 번은 사람이 해야 합니다
+
+GameCI 는 Unity 라이선스를 대신 얻어 주지 않습니다. 저장소
+**Settings > Secrets and variables > Actions** 에 셋을 넣으십시오.
+
+| 비밀값 | 무엇 |
+|---|---|
+| `UNITY_LICENSE` | `.ulf` 라이선스 파일의 **내용 전체** |
+| `UNITY_EMAIL` | Unity 계정 이메일 |
+| `UNITY_PASSWORD` | Unity 계정 암호 |
+
+`.ulf` 는 Unity Hub 에 로그인해 개인 라이선스를 받으면 생깁니다.
+윈도우에서는 `C:/ProgramData/Unity/Unity_lic.ulf` 입니다.
+(개인 라이선스에는 `UNITY_SERIAL` 이 필요 없습니다. 그쪽은 Pro 용입니다)
+
+비밀값이 없으면 워크플로가 **첫 단계에서 그 사실을 말하고 멈춥니다.** 활성화 오류는 읽어도
+무슨 소린지 알기 어려워, 먼저 물어보게 해 두었습니다.
+
+### CI에서는 그리기 검사가 건너뜁니다
+
+컨테이너에는 그래픽 장치가 없어 창을 그릴 수 없습니다. 그리기 검사는 그때
+`SystemInfo.graphicsDeviceType` 을 보고 **스스로 건너뜁니다.** 진짜 결함을 "화면이 없어서" 로
+덮지 않으려는 것입니다.
+
+**그러니 창을 손댔다면 CI만 믿지 마십시오.** 위 2번을 화면이 있는 기계에서 한 번 돌리십시오.
+
+### 표를 고치고 굽기를 잊은 커밋 잡기
+
+소비하는 프로젝트 쪽 이야기입니다. 표 파일이 바뀐 것은 diff 에 보이지만, **산출물이 안 바뀐 것은
+diff 에 보이지 않습니다.** 없는 것은 눈에 띄지 않으니까요.
+
+```sh
+Unity -batchmode -projectPath . -executeMethod CsvPipeline.CsvDriftCheck.Run
+```
+
+어긋난 표가 있으면 **종료 코드 1** 과 함께 어느 표가 왜 어긋났는지를 로그에 남깁니다.
+아무것도 쓰지 않습니다. 에디터에서 확인하려면
+`Tools > CSV Pipeline > 표와 산출물이 어긋나는지 확인` 입니다.
+
+판정은 **파이프라인 창의 것과 같습니다.** 화면에서 "바뀌는 것 없음" 인 표가 CI 에서 실패하면
+둘 중 하나는 거짓말이고, 사람은 어느 쪽을 믿을지 알 수 없게 됩니다. 검사가 그 둘을 맞춰 둡니다.
+
+---
+
+## 4. 컴파일만 빠르게 보기
 
 Unity를 띄우지 않고 컴파일만 확인하려면, 에디터가 만들어 둔 `.csproj` 의 `<Reference>` 블록을
 재활용해 임시 프로젝트를 만들어 `dotnet build` 하면 됩니다.

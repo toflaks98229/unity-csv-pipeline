@@ -43,6 +43,16 @@ namespace CsvPipeline
         /// 켜져 있어도 <b>다른 곳에서 참조 중인 에셋은 지우지 않고</b> 경고만 남깁니다.
         /// </summary>
         public bool DeleteMissing { get; set; } = true;
+
+        /// <summary>
+        /// 정리 대조를 에셋 <b>이름</b>이 아니라 <b>경로</b>로 할지 여부입니다. 기본은 이름입니다.
+        /// <para>
+        /// 산출물 폴더 안에 이 표가 만들지 않은 같은 타입의 에셋이 섞여 있을 때 켭니다.
+        /// 이름으로 대조하면 그런 에셋이 "표에서 사라진 것"으로 보여 지워질 수 있습니다.
+        /// (참조가 남아 있으면 보존되지만, 그것까지 기대할 일은 아닙니다)
+        /// </para>
+        /// </summary>
+        public bool ReconcileByPath { get; set; }
     }
 
     /// <summary>

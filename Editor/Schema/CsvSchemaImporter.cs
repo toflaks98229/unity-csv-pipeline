@@ -23,9 +23,18 @@ namespace CsvPipeline
         /// <summary>행마다 에셋을 굽고, 표에서 사라진 산출물을 정리합니다.</summary>
         /// <param name="table">파싱된 표입니다.</param>
         /// <param name="report">건수와 문제를 기록할 리포트입니다.</param>
-        /// <summary>선언이 정리를 허용할 때만, 에셋 이름으로 대조해 정리합니다.</summary>
+        /// <summary>선언이 정리를 허용할 때만 정리합니다. 대조 방식은 선언이 정합니다.</summary>
         protected override CsvReconcileMode ReconcileMode
-            => _schema.Declaration.DeleteMissing ? CsvReconcileMode.ByName : CsvReconcileMode.None;
+        {
+            get
+            {
+                if (!_schema.Declaration.DeleteMissing) return CsvReconcileMode.None;
+
+                return _schema.Declaration.ReconcileByPath
+                    ? CsvReconcileMode.ByPath
+                    : CsvReconcileMode.ByName;
+            }
+        }
 
         /// <summary>정리 대상을 찾을 검색 필터입니다.</summary>
         protected override string ReconcileTypeFilter => $"t:{_schema.AssetType.Name}";
@@ -138,6 +147,7 @@ namespace CsvPipeline
 
             var binder = new CsvValueBinder();
             var validNames = new HashSet<string>();
+            var validPaths = new HashSet<string>();
             var claims = new CsvIdClaims();
 
             foreach (CsvRow row in table.Rows)
@@ -160,6 +170,7 @@ namespace CsvPipeline
 
                 validNames.Add(id);
                 string path = $"{folder}/{id}.asset";
+                validPaths.Add(path);
 
                 ClaimForPlan(claims, plan, path, id, row.LineNumber);
 
@@ -182,7 +193,10 @@ namespace CsvPipeline
 
             if (_schema.Declaration.DeleteMissing)
             {
-                PlanObsolete(plan, folder, $"t:{_schema.AssetType.Name}", validNames, false);
+                bool byPath = _schema.Declaration.ReconcileByPath;
+
+                PlanObsolete(plan, folder, $"t:{_schema.AssetType.Name}",
+                             byPath ? (ICollection<string>)validPaths : validNames, byPath);
             }
         }
 
