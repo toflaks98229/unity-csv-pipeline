@@ -19,6 +19,11 @@ namespace CsvPipeline
         /// <summary>참조가 남았다고 볼 경로들입니다. 정리 규칙을 검사할 때 채웁니다.</summary>
         public HashSet<string> Referenced { get; } = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+        /// <summary>
+        /// 참조 조사를 믿을 수 없는 상황을 흉내 냅니다. null이면 조사할 수 있는 평소 상태입니다.
+        /// </summary>
+        public string ReferenceScanBlocked { get; private set; }
+
         /// <summary><see cref="SaveAll"/>이 불린 횟수입니다.</summary>
         public int SaveCount { get; private set; }
 
@@ -44,6 +49,17 @@ namespace CsvPipeline
         {
             _texts[path] = text;
             EnsureFolder(ParentOf(path));
+            return this;
+        }
+
+        /// <summary>
+        /// 참조 조사를 할 수 없는 프로젝트를 흉내 냅니다. 그런 프로젝트에서 정리가 멈추는지 검사할 때 씁니다.
+        /// </summary>
+        /// <param name="reason">조사할 수 없는 이유입니다. null이면 평소대로 조사합니다.</param>
+        /// <returns>이어 쓰기 좋도록 자기 자신입니다.</returns>
+        public MemoryAssetGateway WithReferenceScanBlocked(string reason)
+        {
+            ReferenceScanBlocked = reason;
             return this;
         }
 

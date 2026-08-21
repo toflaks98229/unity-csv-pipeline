@@ -29,42 +29,53 @@ namespace CsvPipeline
         /// <summary>이번에 확정된 에셋 경로입니다. 없으면 null입니다.</summary>
         public string Path { get; }
 
+        /// <summary>
+        /// 이 단위가 온 줄 번호입니다. 모르면 0입니다.
+        /// 식별자가 겹쳤을 때 <b>어느 행과 부딪쳤는지</b>를 말하려면 이 값이 필요합니다.
+        /// </summary>
+        public int Line { get; }
+
         /// <summary>결과를 만듭니다.</summary>
         /// <param name="kind">결과의 종류입니다.</param>
         /// <param name="name">확정된 에셋 이름입니다.</param>
         /// <param name="path">확정된 에셋 경로입니다.</param>
-        private CsvBakeOutcome(CsvBakeKind kind, string name, string path)
+        /// <param name="line">이 단위가 온 줄 번호입니다.</param>
+        private CsvBakeOutcome(CsvBakeKind kind, string name, string path, int line)
         {
             Kind = kind;
             Name = name;
             Path = path;
+            Line = line;
         }
 
         /// <summary>새로 만든 결과입니다.</summary>
         /// <param name="name">에셋 이름입니다.</param>
         /// <param name="path">에셋 경로입니다.</param>
+        /// <param name="line">이 단위가 온 줄 번호입니다.</param>
         /// <returns>결과입니다.</returns>
-        public static CsvBakeOutcome Created(string name, string path = null)
-            => new CsvBakeOutcome(CsvBakeKind.Created, name, path);
+        public static CsvBakeOutcome Created(string name, string path = null, int line = 0)
+            => new CsvBakeOutcome(CsvBakeKind.Created, name, path, line);
 
         /// <summary>갱신한 결과입니다.</summary>
         /// <param name="name">에셋 이름입니다.</param>
         /// <param name="path">에셋 경로입니다.</param>
+        /// <param name="line">이 단위가 온 줄 번호입니다.</param>
         /// <returns>결과입니다.</returns>
-        public static CsvBakeOutcome Updated(string name = null, string path = null)
-            => new CsvBakeOutcome(CsvBakeKind.Updated, name, path);
+        public static CsvBakeOutcome Updated(string name = null, string path = null, int line = 0)
+            => new CsvBakeOutcome(CsvBakeKind.Updated, name, path, line);
 
         /// <summary>반영하지 않은 결과입니다.</summary>
         /// <returns>결과입니다.</returns>
-        public static CsvBakeOutcome Skipped() => new CsvBakeOutcome(CsvBakeKind.Skipped, null, null);
+        public static CsvBakeOutcome Skipped() => new CsvBakeOutcome(CsvBakeKind.Skipped, null, null, 0);
 
         /// <summary>새로 만들었거나 갱신한 결과를 종류만 정해 만듭니다.</summary>
         /// <param name="created">새로 만들었으면 true입니다.</param>
         /// <param name="name">에셋 이름입니다.</param>
         /// <param name="path">에셋 경로입니다.</param>
+        /// <param name="line">이 단위가 온 줄 번호입니다.</param>
         /// <returns>결과입니다.</returns>
-        public static CsvBakeOutcome Baked(bool created, string name, string path = null)
-            => created ? Created(name, path) : Updated(name, path);
+        public static CsvBakeOutcome Baked(bool created, string name, string path = null, int line = 0)
+            => created ? Created(name, path, line) : Updated(name, path, line);
     }
 
     /// <summary>표에서 사라진 산출물을 무엇으로 대조할지입니다.</summary>

@@ -68,6 +68,13 @@ namespace CsvPipeline
                 return CsvBakeOutcome.Skipped();
             }
 
+            string rejected = CsvAssetId.Reject(id);
+            if (rejected != null)
+            {
+                report.Warn(CsvAssetId.Describe(id, rejected), row.LineNumber, idColumn);
+                return CsvBakeOutcome.Skipped();
+            }
+
             string path = $"{folder}/{id}.asset";
             ScriptableObject asset = CsvAssetPipeline.CreateOrLoad(_schema.AssetType, path, out bool created);
             if (asset == null)
@@ -82,7 +89,7 @@ namespace CsvPipeline
             CsvAssets.Current.MarkDirty(asset);
             CsvAssetPipeline.FlushIfCreated(asset, created);
 
-            return CsvBakeOutcome.Baked(created, id, path);
+            return CsvBakeOutcome.Baked(created, id, path, row.LineNumber);
         }
 
         /// <summary>행 하나의 모든 열을 에셋에 씁니다.</summary>
@@ -131,6 +138,7 @@ namespace CsvPipeline
 
             var binder = new CsvValueBinder();
             var validNames = new HashSet<string>();
+            var claims = new CsvIdClaims();
 
             foreach (CsvRow row in table.Rows)
             {
@@ -141,8 +149,19 @@ namespace CsvPipeline
                     continue;
                 }
 
+                string rejected = CsvAssetId.Reject(id);
+                if (rejected != null)
+                {
+                    plan.Add(CsvChangeKind.Skip, null, row.LineNumber, CsvAssetId.Describe(id, rejected));
+                    plan.Issues.Add(new CsvIssue(CsvIssueSeverity.Warning,
+                                                 CsvAssetId.Describe(id, rejected), row.LineNumber, idColumn));
+                    continue;
+                }
+
                 validNames.Add(id);
                 string path = $"{folder}/{id}.asset";
+
+                ClaimForPlan(claims, plan, path, id, row.LineNumber);
 
                 var existing = CsvAssets.Current.Load(path, _schema.AssetType) as ScriptableObject;
                 if (existing == null)

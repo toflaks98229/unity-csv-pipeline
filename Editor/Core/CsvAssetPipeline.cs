@@ -16,6 +16,12 @@ namespace CsvPipeline
         private static ICsvAssetGateway Assets => CsvAssets.Current;
 
         /// <summary>
+        /// 참조 조사를 믿을 수 없으면 그 이유입니다. 믿을 수 있으면 null입니다.
+        /// 이 값이 있으면 정리는 <b>아무것도 지우지 않고</b> 전부 보존으로 돌립니다.
+        /// </summary>
+        public static string ReferenceScanBlocked => Assets.ReferenceScanBlocked;
+
+        /// <summary>
         /// 지정한 파일명(예: "LootTables.csv")을 가진 표 파일의 에셋 경로를 찾습니다.
         /// </summary>
         /// <param name="fileName">찾을 파일 이름입니다. 확장자를 포함합니다.</param>
@@ -124,6 +130,14 @@ namespace CsvPipeline
             List<string> candidates = FindObsolete(folder, typeFilter, valid, byPath);
             if (candidates.Count == 0) return;
 
+            // 조사할 수 없으면 전부 보존입니다. 지울 수 있는 것이 하나도 없다고 답하는 편이
+            // "참조가 없다"고 잘못 답하는 것보다 낫습니다.
+            if (ReferenceScanBlocked != null)
+            {
+                preserved.AddRange(candidates);
+                return;
+            }
+
             HashSet<string> referenced = Assets.FindReferenced(candidates);
             foreach (string path in candidates)
             {
@@ -152,6 +166,29 @@ namespace CsvPipeline
         }
 
         /// <summary>
+        /// 참조를 조사할 수 없을 때, 후보를 하나도 지우지 않고 전부 보존합니다.
+        /// 이유는 <b>한 번만</b> 알립니다. 후보마다 같은 말을 되풀이하면 진짜 문제가 묻힙니다.
+        /// </summary>
+        /// <param name="candidates">지우지 않고 남길 경로들입니다.</param>
+        /// <param name="reason">조사할 수 없는 이유입니다.</param>
+        /// <param name="logTag">로그 접두 태그입니다.</param>
+        /// <param name="report">결과를 기록할 리포트입니다. null이면 Console에 바로 남깁니다.</param>
+        private static void PreserveAll(List<string> candidates, string reason, string logTag, CsvImportReport report)
+        {
+            string message = $"표에서 사라진 산출물 {candidates.Count}개를 지우지 않았습니다. {reason}";
+
+            if (report != null)
+            {
+                report.Warn(message);
+                for (int i = 0; i < candidates.Count; i++) report.CountPreserved();
+            }
+            else
+            {
+                Debug.LogWarning($"{logTag} {message}");
+            }
+        }
+
+        /// <summary>
         /// 삭제 후보 중 <b>아무도 참조하지 않는 것만</b> 지웁니다. 참조가 남은 것은 경고만 남기고 보존합니다.
         /// </summary>
         /// <param name="candidates">CSV에서 사라져 삭제 대상이 된 에셋 경로들입니다.</param>
@@ -160,6 +197,13 @@ namespace CsvPipeline
         private static void DeleteUnreferenced(List<string> candidates, string logTag, CsvImportReport report)
         {
             if (candidates.Count == 0) return;
+
+            string blocked = ReferenceScanBlocked;
+            if (blocked != null)
+            {
+                PreserveAll(candidates, blocked, logTag, report);
+                return;
+            }
 
             HashSet<string> referenced = Assets.FindReferenced(candidates);
 

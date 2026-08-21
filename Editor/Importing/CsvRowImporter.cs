@@ -80,6 +80,13 @@ namespace CsvPipeline
                 return CsvBakeOutcome.Skipped();
             }
 
+            string rejected = CsvAssetId.Reject(id);
+            if (rejected != null)
+            {
+                report.Warn(CsvAssetId.Describe(id, rejected), row.LineNumber);
+                return CsvBakeOutcome.Skipped();
+            }
+
             bool isNew = CsvAssets.Current.Load(AssetPathFor(id), typeof(T)) == null;
 
             T asset = CreateOrLoad(id, row);
@@ -91,7 +98,7 @@ namespace CsvPipeline
             CsvAssets.Current.MarkDirty(asset);
             CsvAssetPipeline.FlushIfCreated(asset, isNew);
 
-            return CsvBakeOutcome.Baked(isNew, id, CsvAssets.Current.PathOf(asset));
+            return CsvBakeOutcome.Baked(isNew, id, CsvAssets.Current.PathOf(asset), row.LineNumber);
         }
 
         /// <summary>행마다 만들지 갱신할지, 그리고 무엇이 사라질지를 계산합니다. 쓰지는 않습니다.</summary>
@@ -101,6 +108,7 @@ namespace CsvPipeline
         {
             var validNames = new HashSet<string>();
             var validPaths = new HashSet<string>();
+            var claims = new CsvIdClaims();
 
             foreach (CsvRow row in table.Rows)
             {
@@ -111,8 +119,19 @@ namespace CsvPipeline
                     continue;
                 }
 
+                string rejected = CsvAssetId.Reject(id);
+                if (rejected != null)
+                {
+                    plan.Add(CsvChangeKind.Skip, null, row.LineNumber, CsvAssetId.Describe(id, rejected));
+                    plan.Issues.Add(new CsvIssue(CsvIssueSeverity.Warning,
+                                                 CsvAssetId.Describe(id, rejected), row.LineNumber));
+                    continue;
+                }
+
                 string path = AssetPathFor(id);
                 bool exists = CsvAssets.Current.Load(path, typeof(T)) != null;
+
+                ClaimForPlan(claims, plan, path, id, row.LineNumber);
 
                 plan.Add(exists ? CsvChangeKind.Update : CsvChangeKind.Create, path, row.LineNumber);
                 validNames.Add(id);

@@ -145,10 +145,17 @@ namespace CsvPipeline
         protected virtual string ReconcileFolder => OutputFolder;
 
         /// <summary>
-        /// 단위마다 <paramref name="bake"/>를 부르고, 진행·취소·집계·정리를 한 자리에서 처리합니다.
+        /// 단위마다 <paramref name="bake"/>를 부르고, 진행·취소·집계·겹침 확인·정리를 한 자리에서 처리합니다.
+        /// <para>
         /// <b>정리는 취소되지 않았을 때만 합니다.</b> 취소되면 아직 읽지 않은 단위가 남아 있어,
         /// 그 산출물을 "표에서 사라진 것"으로 오해해 지우게 됩니다. 이 규칙을 파생 클래스마다
         /// 다시 적으면 한 곳만 빠뜨려도 취소 버튼이 삭제 버튼이 되므로 여기에 둡니다.
+        /// </para>
+        /// <para>
+        /// <b>같은 자리를 두 번 차지하면 알립니다.</b> 겹친 식별자는 앞 행을 덮어 값을 지우는데,
+        /// 집계가 <c>HashSet</c>이라 건수로는 드러나지 않습니다. 이것도 파생마다 적을 일이 아니라
+        /// 골격이 지킬 계약입니다.
+        /// </para>
         /// </summary>
         /// <typeparam name="TUnit">구울 단위의 타입입니다. (행 또는 그룹 식별자)</typeparam>
         /// <param name="units">구울 단위들입니다.</param>
@@ -159,6 +166,7 @@ namespace CsvPipeline
         {
             var validNames = new HashSet<string>();
             var validPaths = new HashSet<string>();
+            var claims = new CsvIdClaims();
 
             for (int i = 0; i < units.Count; i++)
             {
@@ -173,6 +181,8 @@ namespace CsvPipeline
                     default: report.CountSkipped(); continue;
                 }
 
+                WarnIfClaimed(claims, outcome, report);
+
                 if (outcome.Name != null) validNames.Add(outcome.Name);
                 if (outcome.Path != null) validPaths.Add(outcome.Path);
             }
@@ -180,6 +190,25 @@ namespace CsvPipeline
             if (IsCancelled) return;
 
             Reconcile(validNames, validPaths, report);
+        }
+
+        /// <summary>
+        /// 이 단위가 앞선 단위와 같은 에셋을 가리키면 경고합니다.
+        /// 자리는 <b>경로</b>로 가립니다. 같은 식별자라도 파생 타입에 따라 다른 폴더에 놓이면
+        /// 서로 다른 에셋이고, 그때 경고하면 없는 문제를 있다고 말하게 됩니다.
+        /// </summary>
+        /// <param name="claims">이번 표의 자리 장부입니다.</param>
+        /// <param name="outcome">방금 구운 결과입니다.</param>
+        /// <param name="report">경고를 남길 리포트입니다.</param>
+        private static void WarnIfClaimed(CsvIdClaims claims, CsvBakeOutcome outcome, CsvImportReport report)
+        {
+            string key = outcome.Path ?? outcome.Name;
+            string display = outcome.Name ?? outcome.Path;
+            if (key == null) return;
+
+            if (claims.TryClaim(key, display, outcome.Line, out CsvIdClaim taken)) return;
+
+            report.Warn(CsvIdClaims.Describe(display, taken), outcome.Line);
         }
 
         /// <summary>
@@ -316,6 +345,26 @@ namespace CsvPipeline
             => plan.Unsupported = "이 임포터는 미리보기를 지원하지 않습니다.";
 
         /// <summary>
+        /// 계획 단계에서 같은 에셋을 두 번 가리키면 계획에 경고를 남깁니다.
+        /// 굽기 쪽의 <see cref="BakeEach{TUnit}"/>와 같은 판정을 써야 <b>미리보기와 실제가 어긋나지 않습니다.</b>
+        /// </summary>
+        /// <param name="claims">이번 표의 자리 장부입니다.</param>
+        /// <param name="plan">경고를 남길 계획입니다.</param>
+        /// <param name="key">자리를 가리는 값입니다. 보통 에셋 경로입니다.</param>
+        /// <param name="display">사람에게 보일 식별자 표기입니다.</param>
+        /// <param name="line">지금 행의 줄 번호입니다.</param>
+        /// <returns>처음 차지한 자리면 true입니다.</returns>
+        protected static bool ClaimForPlan(CsvIdClaims claims, CsvImportPlan plan,
+                                           string key, string display, int line)
+        {
+            if (claims.TryClaim(key, display, line, out CsvIdClaim taken)) return true;
+
+            plan.Issues.Add(new CsvIssue(CsvIssueSeverity.Warning,
+                                         CsvIdClaims.Describe(display, taken), line));
+            return false;
+        }
+
+        /// <summary>
         /// 표에서 사라질 산출물을 계획에 더합니다. 참조가 남은 것은 보존으로 분류합니다.
         /// </summary>
         /// <param name="plan">채울 계획입니다.</param>
@@ -330,10 +379,16 @@ namespace CsvPipeline
                                            out List<string> deletable, out List<string> preserved);
 
             foreach (string path in deletable) plan.Add(CsvChangeKind.Delete, path);
-            foreach (string path in preserved)
-            {
-                plan.Add(CsvChangeKind.Preserve, path, 0, "다른 곳에서 참조 중이라 지우지 않습니다.");
-            }
+            if (preserved.Count == 0) return;
+
+            // 조사할 수 없어 보존한 것과 참조가 남아 보존한 것은 뜻이 다릅니다. 같은 말로 적으면
+            // 안전장치가 꺼져 있다는 사실이 "잘 지켜지고 있다"로 읽힙니다.
+            string blocked = CsvAssetPipeline.ReferenceScanBlocked;
+            string note = blocked ?? "다른 곳에서 참조 중이라 지우지 않습니다.";
+
+            foreach (string path in preserved) plan.Add(CsvChangeKind.Preserve, path, 0, note);
+
+            if (blocked != null) plan.Issues.Add(new CsvIssue(CsvIssueSeverity.Warning, blocked));
         }
 
         /// <summary>
