@@ -65,16 +65,6 @@ public class ClueData : ScriptableObject
 버전을 고정하려면 `#v0.7.0` 처럼 태그를 붙입니다.
 서브모듈로 쓰려면 `Packages/com.toflaks.csv-pipeline` 경로에 두면 됩니다.
 
-### ⚠️ 비공개 저장소라면 — 자격증명이 미리 있어야 합니다
-
-이 저장소는 비공개입니다. **Package Manager는 대화형 인증을 못 하고 암호를 물어볼 수도 없어서**,
-git이 프롬프트 없이 통과하지 못하면 그냥 인증 오류로 끝납니다. 둘 중 하나를 갖춰 두십시오.
-
-- **HTTPS** — 그 PC에서 `git clone https://github.com/toflaks98229/unity-csv-pipeline.git` 을
-  한 번 수동으로 돌려 자격증명 관리자(Windows는 Git Credential Manager)에 토큰을 심습니다.
-- **SSH** — 주소를 `git@github.com:toflaks98229/unity-csv-pipeline.git` 으로 쓰고,
-  **암호 없는 키**를 두거나 ssh-agent에 미리 올려 둡니다.
-
 `git`이 **Unity가 보는 PATH**에 있어야 합니다. (Git Bash 안에서만 되는 것으로는 부족합니다)
 잘 되는지는 Unity를 열기 전에 이 명령으로 미리 확인할 수 있습니다. 종료코드 0이면 됩니다.
 

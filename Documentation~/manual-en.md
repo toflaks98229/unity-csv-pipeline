@@ -104,19 +104,11 @@ Append a tag such as `#v0.13.0` to pin a version. To vendor it instead, place it
 
 Minimum Unity version: **2022.3**.
 
-### If the repository is private
-
-Package Manager cannot prompt for credentials. If git cannot authenticate without a prompt, resolution
-fails outright. Set one of these up first:
-
-- **HTTPS** — run `git clone <url>` manually once on that machine so the credential helper stores a token.
-- **SSH** — use `git@github.com:...` with a passphrase-free key, or load the key into ssh-agent beforehand.
-
 `git` must be on the PATH that **Unity** sees, not only inside a shell. Verify before opening Unity;
 exit code 0 means you are fine:
 
 ```sh
-GIT_TERMINAL_PROMPT=0 git ls-remote <url>
+GIT_TERMINAL_PROMPT=0 git ls-remote https://github.com/toflaks98229/unity-csv-pipeline.git
 ```
 
 This does not apply when the package is vendored — that path uses the working tree as-is.

@@ -61,19 +61,19 @@ namespace CsvPipeline
             {
                 string hint = MissingAssetHint;
                 plan.Issues.Add(new CsvIssue(CsvIssueSeverity.Error,
-                    $"{typeof(T).Name} 에셋이 없습니다. 이 표는 에셋을 새로 만들지 않습니다."
+                    $"There is no {typeof(T).Name} asset. This table never creates one."
                     + (string.IsNullOrEmpty(hint) ? string.Empty : $" {hint}")));
-                plan.Unsupported = "갱신할 에셋이 없습니다.";
+                plan.Unsupported = "There is no asset to update.";
                 return;
             }
 
             if (paths.Count > 1)
             {
                 plan.Issues.Add(new CsvIssue(CsvIssueSeverity.Warning,
-                    $"{typeof(T).Name} 에셋이 {paths.Count}개입니다. 경로순 첫 번째만 갱신합니다."));
+                    $"There are {paths.Count} {typeof(T).Name} assets. Only the first by path is updated."));
             }
 
-            plan.Add(CsvChangeKind.Update, paths[0], 0, $"표 {table.Count}행이 이 에셋 하나에 반영됩니다.");
+            plan.Add(CsvChangeKind.Update, paths[0], 0, $"All {table.Count} rows are applied to this single asset.");
         }
 
         /// <summary>프로젝트에서 대상 에셋을 찾습니다. 없으면 오류로 보고하고 null입니다.</summary>
@@ -91,8 +91,8 @@ namespace CsvPipeline
             {
                 string hint = MissingAssetHint;
                 report.Error(
-                    $"{typeof(T).Name} 에셋을 찾지 못해 표를 반영하지 못했습니다. "
-                    + "이 표의 산출물은 프로젝트에 하나뿐인 에셋이라 임포터가 새로 만들지 않습니다."
+                    $"No {typeof(T).Name} asset was found, so this table was not applied. "
+                    + "Its output is a single project-wide asset, which the importer never creates."
                     + (string.IsNullOrEmpty(hint) ? string.Empty : $" {hint}"));
                 return null;
             }
@@ -101,8 +101,8 @@ namespace CsvPipeline
             {
                 // 갱신되지 않은 쪽은 낡은 값으로 남아, 어느 것을 참조하느냐에 따라 결과가 갈립니다.
                 report.Warn(
-                    $"{typeof(T).Name} 에셋이 {found.Count}개 있습니다. 경로순 첫 번째만 갱신합니다. "
-                    + "이런 표는 게임 전역의 규칙이므로 하나만 두십시오.", 0, null, found[0]);
+                    $"There are {found.Count} {typeof(T).Name} assets. Only the first by path is updated. "
+                    + "A table like this holds game-wide rules, so keep exactly one.", 0, null, found[0]);
             }
 
             return found[0];

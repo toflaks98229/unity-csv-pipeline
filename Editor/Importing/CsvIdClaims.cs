@@ -73,17 +73,18 @@ namespace CsvPipeline
         /// <returns>설명 문장입니다.</returns>
         public static string Describe(string display, CsvIdClaim taken)
         {
-            string where = taken.Line > 0 ? $"{taken.Line}행" : "앞선 행";
+            string where = taken.Line > 0 ? $"row {taken.Line}" : "an earlier row";
 
             if (!string.Equals(display, taken.Display, StringComparison.Ordinal))
             {
-                return $"식별자 '{display}'는 {where}의 '{taken.Display}'와 대소문자만 다릅니다. "
-                     + "윈도우에서는 같은 에셋이 되어 앞 행의 값이 사라지고, macOS·리눅스에서는 "
-                     + "다른 에셋이 됩니다. 한쪽으로 맞추십시오.";
+                return $"Identifier '{display}' differs from '{taken.Display}' in {where} only by letter case. "
+                     + "On Windows they are the same asset, so the earlier row's values are lost; on "
+                     + "macOS and Linux they are two different assets. Settle on one spelling.";
             }
 
-            return $"식별자 '{display}'가 {where}에서 이미 쓰였습니다. "
-                 + $"두 행이 같은 에셋을 가리켜 뒤 행이 앞 행을 덮으므로, {where}의 값은 사라집니다.";
+            return $"Identifier '{display}' was already used in {where}. "
+                 + $"Both rows point at the same asset, so the later row overwrites the earlier one "
+                 + $"and the values from {where} are lost.";
         }
     }
 }

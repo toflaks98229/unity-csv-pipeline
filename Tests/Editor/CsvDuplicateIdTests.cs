@@ -100,7 +100,7 @@ namespace CsvPipeline.Tests
             Assert.IsTrue(claims.TryClaim("Assets/Sword.asset", "Sword", 2, out _));
             Assert.IsFalse(claims.TryClaim("Assets/sword.asset", "sword", 3, out CsvIdClaim taken));
 
-            StringAssert.Contains("대소문자", CsvIdClaims.Describe("sword", taken),
+            StringAssert.Contains("letter case", CsvIdClaims.Describe("sword", taken),
                                   "덮어쓴다고만 하면 사람이 원인을 찾지 못합니다.");
         }
 
@@ -123,7 +123,7 @@ namespace CsvPipeline.Tests
         [Test]
         public void 겹친_식별자를_경고한다()
         {
-            LogAssert.Expect(LogType.Warning, new Regex("이미 쓰였습니다"));
+            LogAssert.Expect(LogType.Warning, new Regex("was already used"));
 
             CsvImportReport report = Bake(
                 "Widget_A,첫 위젯,30,12,Player,100\n"

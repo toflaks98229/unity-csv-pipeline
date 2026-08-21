@@ -53,14 +53,14 @@ namespace CsvPipeline
             string key = GetRowKey(row);
             if (string.IsNullOrEmpty(key))
             {
-                report.Warn("조회 키가 비어 있어 건너뜁니다.", row.LineNumber);
+                report.Warn("The lookup key is empty, skipping this row.", row.LineNumber);
                 return CsvBakeOutcome.Skipped();
             }
 
             if (!byKey.TryGetValue(key, out T asset))
             {
                 string hint = MissingAssetHint;
-                report.Warn($"'{key}'에 해당하는 {typeof(T).Name}를 찾지 못했습니다."
+                report.Warn($"No {typeof(T).Name} found for '{key}'."
                             + (string.IsNullOrEmpty(hint) ? string.Empty : $" {hint}"), row.LineNumber);
                 return CsvBakeOutcome.Skipped();
             }
@@ -90,14 +90,14 @@ namespace CsvPipeline
                 string key = GetRowKey(row);
                 if (string.IsNullOrEmpty(key))
                 {
-                    plan.Add(CsvChangeKind.Skip, null, row.LineNumber, "조회 키가 비어 있습니다.");
+                    plan.Add(CsvChangeKind.Skip, null, row.LineNumber, "The lookup key is empty.");
                     continue;
                 }
 
                 if (!byKey.TryGetValue(key, out T asset))
                 {
                     plan.Add(CsvChangeKind.Skip, null, row.LineNumber,
-                             $"'{key}'에 해당하는 {typeof(T).Name}가 없습니다.");
+                             $"No {typeof(T).Name} exists for '{key}'.");
                     continue;
                 }
 
