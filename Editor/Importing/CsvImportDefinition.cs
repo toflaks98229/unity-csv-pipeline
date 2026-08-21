@@ -432,6 +432,9 @@ namespace CsvPipeline
 
             foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
             {
+                // 검사용 임포터는 소비 프로젝트의 것이 아닙니다. (CsvAssemblies 참고)
+                if (CsvAssemblies.IsTestAssembly(assembly)) continue;
+
                 Type[] types;
                 try { types = assembly.GetTypes(); }
                 catch (ReflectionTypeLoadException e) { types = e.Types; }
