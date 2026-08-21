@@ -242,6 +242,11 @@ namespace CsvPipeline
             return found;
         }
 
+        /// <summary>
+        /// 들고 있는 것이 없습니다. 전부 메모리에 있어 다시 물을 것도, 낡을 것도 없습니다.
+        /// </summary>
+        public void InvalidateCaches() { }
+
         /// <summary>만들어 둔 에셋 객체를 모두 정리합니다.</summary>
         public void Dispose()
         {

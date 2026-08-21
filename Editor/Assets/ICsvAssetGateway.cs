@@ -90,5 +90,15 @@ namespace CsvPipeline
         /// </para>
         /// </summary>
         string ReferenceScanBlocked { get; }
+
+        /// <summary>
+        /// 들고 있던 것을 버립니다. <b>에셋이 하나라도 바뀌면 불립니다.</b>
+        /// <para>
+        /// 참조 조사는 프로젝트 전체를 묻는 일이라 결과를 들고 있는 편이 낫습니다. 그러면
+        /// 낡을 수 있고, 낡은 답은 <b>있는 참조를 못 보고 지우는</b> 쪽으로 틀릴 수 있습니다.
+        /// 그래서 버릴 길을 계약에 둡니다. 들고 있는 것이 없는 구현은 아무것도 하지 않으면 됩니다.
+        /// </para>
+        /// </summary>
+        void InvalidateCaches();
     }
 }
