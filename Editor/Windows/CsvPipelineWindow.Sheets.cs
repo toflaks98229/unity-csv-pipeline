@@ -1,5 +1,7 @@
+using System;
 using System.Collections.Generic;
 using UnityEditor;
+using UnityEditor.IMGUI.Controls;
 using UnityEngine;
 
 namespace CsvPipeline
@@ -18,6 +20,17 @@ namespace CsvPipeline
         private List<GoogleSheetSyncSettings> _sheets;
 
         private Vector2 _sheetScroll;
+        private SearchField _sheetSearchField;
+
+        /// <summary>지금 걸리는 연동 설정들입니다. 매 그리기마다 새로 만들지 않습니다.</summary>
+        private readonly List<GoogleSheetSyncSettings> _visibleSheets = new List<GoogleSheetSyncSettings>();
+
+        /// <summary>연동 설정을 거르는 검색어입니다.</summary>
+        private string SheetSearch
+        {
+            get => SessionState.GetString(StateKey + "SheetSearch", string.Empty);
+            set => SessionState.SetString(StateKey + "SheetSearch", value ?? string.Empty);
+        }
 
         /// <summary>연동 설정 목록입니다. 없으면 이때 모읍니다.</summary>
         private List<GoogleSheetSyncSettings> Sheets => _sheets ?? (_sheets = GoogleSheetSync.FindAll());
@@ -64,11 +77,46 @@ namespace CsvPipeline
                 return;
             }
 
+            CollectVisibleSheets();
+
             _sheetScroll = EditorGUILayout.BeginScrollView(_sheetScroll);
 
-            for (int i = 0; i < Sheets.Count; i++) DrawSheetRow(Sheets[i], i);
+            for (int i = 0; i < _visibleSheets.Count; i++) DrawSheetRow(_visibleSheets[i], i);
+
+            if (_visibleSheets.Count == 0)
+            {
+                CsvEditorUI.EmptyState(
+                    $"'{SheetSearch}' 에 걸리는 설정이 없습니다",
+                    "대상 표의 파일 이름으로 찾습니다.",
+                    "검색어 지우기", () => SheetSearch = string.Empty);
+            }
 
             EditorGUILayout.EndScrollView();
+        }
+
+        /// <summary>검색어에 걸리는 설정만 모읍니다.</summary>
+        private void CollectVisibleSheets()
+        {
+            _visibleSheets.Clear();
+
+            string search = SheetSearch;
+            bool all = string.IsNullOrWhiteSpace(search);
+
+            foreach (GoogleSheetSyncSettings settings in Sheets)
+            {
+                if (all || Matches(settings, search.Trim())) _visibleSheets.Add(settings);
+            }
+        }
+
+        /// <summary>이 설정이 검색어에 걸리는지 봅니다.</summary>
+        /// <param name="settings">볼 설정입니다.</param>
+        /// <param name="search">검색어입니다.</param>
+        /// <returns>걸리면 true입니다.</returns>
+        private static bool Matches(GoogleSheetSyncSettings settings, string search)
+        {
+            string name = settings.csvFileName;
+            return !string.IsNullOrEmpty(name)
+                && name.IndexOf(search, StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         /// <summary>시트 갈래의 도구 줄입니다.</summary>
@@ -76,8 +124,9 @@ namespace CsvPipeline
         {
             using (new EditorGUILayout.HorizontalScope(EditorStyles.toolbar))
             {
-                if (GUILayout.Button(CsvEditorUI.IconAnd("d_Refresh", " 다시 훑기"),
-                                     EditorStyles.toolbarButton, GUILayout.Width(86)))
+                if (GUILayout.Button(
+                        CsvEditorUI.IconAnd("d_Refresh", " 다시 훑기", "연동 설정 에셋을 다시 모읍니다"),
+                        EditorStyles.toolbarButton, GUILayout.Width(86)))
                 {
                     _sheets = null;
                 }
@@ -85,15 +134,26 @@ namespace CsvPipeline
                 CsvEditorUI.ToolbarSeparator();
 
                 // 비교가 먼저입니다. 받기는 로컬 표를 덮어쓰므로, 무엇이 달라지는지 본 뒤가 순서입니다.
-                if (GUILayout.Button("전부 비교만", EditorStyles.toolbarButton, GUILayout.Width(80)))
+                if (GUILayout.Button(
+                        new GUIContent("전부 비교만", "시트와 로컬 표의 차이만 봅니다. 파일은 쓰지 않습니다"),
+                        EditorStyles.toolbarButton, GUILayout.Width(80)))
                 {
                     GoogleSheetSync.CompareAllMenu();
                 }
 
-                if (GUILayout.Button("전부 받기", EditorStyles.toolbarButton, GUILayout.Width(70)))
+                if (GUILayout.Button(
+                        new GUIContent("전부 받기", "켜진 설정을 모두 받아 로컬 표를 덮어씁니다"),
+                        EditorStyles.toolbarButton, GUILayout.Width(70)))
                 {
                     GoogleSheetSync.PullAllMenu();
                 }
+
+                GUILayout.Space(CsvEditorUI.GapTight);
+
+                if (_sheetSearchField == null) _sheetSearchField = new SearchField();
+
+                string next = _sheetSearchField.OnToolbarGUI(SheetSearch, GUILayout.MinWidth(90));
+                if (next != SheetSearch) SheetSearch = next;
 
                 GUILayout.FlexibleSpace();
 
@@ -134,26 +194,40 @@ namespace CsvPipeline
 
             SheetState state = StateOf(settings);
 
+            // 표 갈래와 같은 자리에 같은 뜻의 막대를 세웁니다. 줄에 마우스를 올려도 밝아지지 않는 것은
+            // 여기서는 줄 자체가 단추가 아니기 때문입니다 — 밝아지면 누를 수 있다고 잘못 말하게 됩니다.
+            CsvEditorUI.StatusBar(row, StateColor(state));
+
             GUILayout.Space(CsvEditorUI.Gap);
             GUILayout.Label(StateIcon(state), GUILayout.Width(CsvEditorUI.StatusWidth),
                             GUILayout.Height(CsvEditorUI.RowHeight));
 
-            string name = string.IsNullOrEmpty(settings.csvFileName) ? "(대상 없음)" : settings.csvFileName;
-            GUILayout.Label(name, GUILayout.MinWidth(140));
+            bool named = !string.IsNullOrEmpty(settings.csvFileName);
+            GUILayout.Label(
+                new GUIContent(named ? settings.csvFileName : "(대상 없음)",
+                               named ? "이 설정이 덮어쓰는 표입니다" : "이 설정에 대상 표가 적혀 있지 않습니다"),
+                GUILayout.MinWidth(120));
 
             CsvEditorUI.ColoredLabel(StateWord(state), StateColor(state), EditorStyles.miniLabel,
                                      GUILayout.Width(90));
 
             GUILayout.FlexibleSpace();
 
-            using (new EditorGUI.DisabledScope(!settings.IsConfigured))
+            bool ready = settings.IsConfigured;
+            string why = ready ? null : "시트 주소가 없거나 읽을 수 없는 형식입니다. 설정 에셋의 Sheet Url 을 확인하십시오";
+
+            using (new EditorGUI.DisabledScope(!ready))
             {
-                if (GUILayout.Button("비교", EditorStyles.miniButtonLeft, GUILayout.Width(44)))
+                if (GUILayout.Button(
+                        new GUIContent("비교", why ?? "시트와 이 표의 차이만 봅니다. 파일은 쓰지 않습니다"),
+                        EditorStyles.miniButtonLeft, GUILayout.Width(44)))
                 {
                     GoogleSheetSync.CompareOne(settings);
                 }
 
-                if (GUILayout.Button("받기", EditorStyles.miniButtonRight, GUILayout.Width(44)))
+                if (GUILayout.Button(
+                        new GUIContent("받기", why ?? "시트 내용으로 이 표를 덮어쓰고 다시 굽습니다"),
+                        EditorStyles.miniButtonRight, GUILayout.Width(44)))
                 {
                     GoogleSheetSync.PullOne(settings);
                 }
@@ -221,8 +295,10 @@ namespace CsvPipeline
         {
             switch (state)
             {
-                case SheetState.BadUrl:
-                case SheetState.NeedsUrl: return CsvEditorUI.Danger;
+                // 주소가 틀린 것은 잘못된 상태이고, 아직 안 적은 것은 손볼 것이 남은 상태입니다.
+                // 같은 빨강으로 두면 "고쳐야 할 것"과 "아직 안 한 것"이 구분되지 않습니다.
+                case SheetState.BadUrl: return CsvEditorUI.Danger;
+                case SheetState.NeedsUrl: return CsvEditorUI.Warning;
                 case SheetState.Auto: return CsvEditorUI.Accent;
                 default: return CsvEditorUI.Muted;
             }

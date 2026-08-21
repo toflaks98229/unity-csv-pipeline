@@ -40,18 +40,35 @@ namespace CsvPipeline
             set => SessionState.SetInt(StateKey + "Tab", (int)value);
         }
 
-        /// <summary>창을 엽니다.</summary>
-        [MenuItem("Tools/CSV Pipeline/CSV 파이프라인 창", false, 0)]
+        /// <summary>
+        /// 창을 엽니다. <b>창 이름은 이 메뉴 항목과 같습니다</b> — 열어 놓고 나면 무엇을 눌러 연
+        /// 창인지 알 수 있어야 합니다. (Unity Editor Design System)
+        /// </summary>
+        [MenuItem("Tools/CSV Pipeline/CSV 파이프라인", false, 0)]
         public static void Open()
         {
             var window = GetWindow<CsvPipelineWindow>();
-            window.titleContent = CsvEditorUI.IconAnd("d_ScriptableObject Icon", "CSV Pipeline");
+            window.titleContent = CsvEditorUI.IconAnd("d_ScriptableObject Icon", "CSV 파이프라인");
             window.minSize = new Vector2(560, 360);
             window.Invalidate();
         }
 
         /// <summary>창이 열릴 때 다시 훑도록 표시합니다.</summary>
         private void OnEnable() => Invalidate();
+
+        /// <summary>
+        /// 창이 앞으로 나오면 마우스 움직임을 받습니다. 줄에 마우스를 올렸을 때 밝아지려면 그때마다
+        /// 다시 그려야 하는데, <b>보고 있지도 않은 창에까지 그 값을 치를 이유는 없습니다.</b>
+        /// </summary>
+        private void OnFocus() => wantsMouseMove = true;
+
+        /// <summary>창이 뒤로 물러나면 마우스 움직임을 그만 받고, 남아 있던 밝은 줄을 지웁니다.</summary>
+        private void OnLostFocus()
+        {
+            wantsMouseMove = false;
+            _hoverIndex = -1;
+            Repaint();
+        }
 
         /// <summary>들고 있던 목록을 버려 다음 그리기에서 다시 모으게 합니다.</summary>
         private void Invalidate()
@@ -95,13 +112,28 @@ namespace CsvPipeline
 
                 GUILayout.FlexibleSpace();
 
-                if (GUILayout.Button(CsvEditorUI.IconOr("_Help", "?", "문서 열기"),
+                if (GUILayout.Button(CsvEditorUI.IconOr("_Help", "?", Shortcuts),
                                      EditorStyles.toolbarButton, GUILayout.Width(28)))
                 {
                     Application.OpenURL("https://github.com/toflaks98229/unity-csv-pipeline#readme");
                 }
             }
         }
+
+        /// <summary>
+        /// 도움말 단추에 걸어 두는 안내입니다. 키로 무엇을 할 수 있는지는 화면에 드러나지 않아,
+        /// 적어 두지 않으면 있는 줄도 모르고 지나갑니다.
+        /// </summary>
+        private const string Shortcuts =
+            "누르면 문서를 엽니다.\n\n"
+            + "표 갈래에서 쓸 수 있는 키\n"
+            + "  ↑ ↓ · Home · End    표 고르기\n"
+            + "  → ←                 펼치기 · 접기\n"
+            + "  Space               펼침 뒤집기\n"
+            + "  Enter               고른 표 굽기\n"
+            + "  Ctrl(⌘)+F           찾기\n"
+            + "  Esc                 검색어 지우기\n"
+            + "  오른쪽 누르기        그 표의 차림표";
 
         /// <summary>
         /// 창 맨 아래 한 줄입니다. 지금 상태와 이 창의 성격을 늘 같은 자리에서 알립니다.
