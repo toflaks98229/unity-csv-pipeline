@@ -102,7 +102,7 @@ namespace CsvPipeline.Tests
             CsvDriftReport report = CsvDriftCheck.Inspect(Only());
 
             Assert.AreEqual(CsvDriftKind.Problem, report.Drifted[0].Kind);
-            StringAssert.Contains("이미 쓰였습니다", report.Drifted[0].Reason());
+            StringAssert.Contains("was already used", report.Drifted[0].Reason());
         }
 
         /// <summary>표 파일 자체가 없으면 어긋났는지조차 알 수 없습니다. 그것도 답입니다.</summary>

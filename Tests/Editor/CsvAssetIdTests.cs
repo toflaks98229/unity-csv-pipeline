@@ -87,7 +87,7 @@ namespace CsvPipeline.Tests
         [TestCase(" Widget_A")]
         [TestCase("Widget_A ")]
         public void 앞뒤_공백은_거절한다(string id)
-            => StringAssert.Contains("공백", CsvAssetId.Reject(id));
+            => StringAssert.Contains("whitespace", CsvAssetId.Reject(id));
 
         /// <summary>마침표로 끝나면 거절합니다. 윈도우가 그 마침표를 떼어 다른 이름으로 만듭니다.</summary>
         [Test]
@@ -131,7 +131,7 @@ namespace CsvPipeline.Tests
         [Test]
         public void 쓸_수_없는_이름의_행은_건너뛴다()
         {
-            LogAssert.Expect(LogType.Warning, new Regex("쓸 수 없는 이름"));
+            LogAssert.Expect(LogType.Warning, new Regex("cannot be used as one"));
 
             CsvImportReport report = Bake(
                 "Widget_A,첫 위젯,30,12,Player,100\n"

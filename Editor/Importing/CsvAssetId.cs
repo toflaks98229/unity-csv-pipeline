@@ -50,28 +50,29 @@ namespace CsvPipeline
 
             if (id.Trim() != id)
             {
-                return "앞이나 뒤에 공백이 있습니다. 눈에 보이지 않아 다음 임포트에서 다른 식별자로 갈립니다.";
+                return "It has leading or trailing whitespace, which is invisible and splits into a different "
+                     + "identifier on the next import.";
             }
 
             foreach (char c in id)
             {
-                if (c < ' ' || c == (char)0x7F) return "보이지 않는 제어 문자가 섞여 있습니다.";
-                if (Forbidden.IndexOf(c) >= 0) return $"'{c}' 문자는 파일 이름에 쓸 수 없습니다.";
+                if (c < ' ' || c == (char)0x7F) return "It contains an invisible control character.";
+                if (Forbidden.IndexOf(c) >= 0) return $"'{c}' cannot be used in a file name.";
             }
 
             if (id[id.Length - 1] == '.')
             {
-                return "마침표로 끝납니다. 윈도우가 이 마침표를 떼어 버려 다른 이름이 됩니다.";
+                return "It ends with a period, which Windows strips, producing a different name.";
             }
 
             if (IsReserved(id))
             {
-                return "윈도우가 장치 이름으로 예약해 둔 낱말이라 파일로 만들 수 없습니다.";
+                return "It is a name Windows reserves for devices, so no file can have it.";
             }
 
             if (id.Length > MaxLength)
             {
-                return $"{MaxLength}자를 넘습니다. ({id.Length}자) 경로가 너무 길어지면 에셋을 만들 수 없습니다.";
+                return $"It is longer than {MaxLength} characters ({id.Length}). An over-long path cannot be created.";
             }
 
             return null;
@@ -84,7 +85,8 @@ namespace CsvPipeline
         /// <param name="reason"><see cref="Reject"/>가 돌려준 사유입니다.</param>
         /// <returns>설명 문장입니다.</returns>
         public static string Describe(string id, string reason)
-            => $"식별자 '{id}'는 그대로 산출물의 파일 이름이 되는데 쓸 수 없는 이름이라 건너뜁니다. {reason}";
+            => $"Identifier '{id}' becomes the output file name as-is, and cannot be used as one. "
+             + $"Skipping this row. {reason}";
 
         /// <summary>예약된 장치 이름인지 봅니다. 마침표 뒤는 확장자로 취급되므로 앞부분만 봅니다.</summary>
         /// <param name="id">확인할 식별자입니다.</param>

@@ -71,7 +71,7 @@ namespace CsvPipeline
                 {
                     // 묶는 단계에서 빠진 행은 구울 단위가 되지 못하므로 여기서 세어 둡니다.
                     report.CountSkipped();
-                    report.Warn("그룹 식별자가 비어 있어 건너뜁니다.", row.LineNumber);
+                    report.Warn("The group identifier is empty, skipping this row.", row.LineNumber);
                     continue;
                 }
 
@@ -127,7 +127,7 @@ namespace CsvPipeline
                 string id = GetGroupId(row);
                 if (string.IsNullOrEmpty(id))
                 {
-                    plan.Add(CsvChangeKind.Skip, null, row.LineNumber, "그룹 식별자가 비어 있습니다.");
+                    plan.Add(CsvChangeKind.Skip, null, row.LineNumber, "The group identifier is empty.");
                     continue;
                 }
 

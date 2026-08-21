@@ -76,7 +76,7 @@ namespace CsvPipeline
             string id = GetId(row);
             if (string.IsNullOrEmpty(id))
             {
-                report.Warn("식별자가 비어 있어 건너뜁니다.", row.LineNumber);
+                report.Warn("The identifier is empty, skipping this row.", row.LineNumber);
                 return CsvBakeOutcome.Skipped();
             }
 
@@ -115,7 +115,7 @@ namespace CsvPipeline
                 string id = GetId(row);
                 if (string.IsNullOrEmpty(id))
                 {
-                    plan.Add(CsvChangeKind.Skip, null, row.LineNumber, "식별자가 비어 있습니다.");
+                    plan.Add(CsvChangeKind.Skip, null, row.LineNumber, "The identifier is empty.");
                     continue;
                 }
 
