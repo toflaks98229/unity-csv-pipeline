@@ -190,7 +190,7 @@ public sealed class ClueImporter : AssetPostprocessor
 
 ## 창 하나에서 다 합니다
 
-**`Tools ▸ CSV Pipeline ▸ CSV 파이프라인 창`**
+**`Tools ▸ CSV Pipeline ▸ CSV 파이프라인`**
 
 갈래가 셋입니다.
 
@@ -201,6 +201,20 @@ public sealed class ClueImporter : AssetPostprocessor
 | **설정** | 실제 적용되는 경로들과 Project Settings 로 가는 길 |
 
 **이 창은 사람이 버튼을 누를 때만 씁니다.** 열어 두는 것만으로는 아무것도 바뀌지 않습니다.
+
+표 갈래는 **마우스 없이도 다 됩니다.**
+
+| 키 | 하는 일 |
+|---|---|
+| `↑` `↓` · `Home` `End` | 표 고르기 |
+| `→` `←` | 펼치기 · 접기 |
+| `Space` | 펼침 뒤집기 |
+| `Enter` | 고른 표 굽기 |
+| `Ctrl`(`⌘`)`+F` | 찾기 |
+| `Esc` | 검색어 지우기 |
+| 오른쪽 누르기 | 그 표의 차림표 (굽기 · 표 열기 · 산출물 폴더 · 경로 복사) |
+
+보기는 셋입니다. **바뀌는 것만** · **손볼 것만** · **전부**.
 
 표 갈래는 지금 구우면 무엇이 생기고·바뀌고·지워지는지 적용 전에 보여 줍니다.
 
