@@ -1,0 +1,87 @@
+# EditMode 검사를 선언한 최소 판과 Unity 6 LTS 양쪽에서 돌립니다.
+#
+# 처음 한 번은 사람이 해야 하는 일이 있습니다 — 저장소 Settings ▸ Secrets 에
+# UNITY_LICENSE · UNITY_EMAIL · UNITY_PASSWORD 를 넣어야 합니다.
+# 어떻게 얻는지는 Documentation~/running-tests.md 의 'CI에서 돌리기' 를 보십시오.
+
+name: 검사
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  checks: write
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  editmode:
+    name: EditMode ${{ matrix.unity }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      # 한쪽이 떨어져도 다른 쪽 결과는 봐야 합니다. 어느 판에서만 깨지는지가 곧 단서입니다.
+      fail-fast: false
+      matrix:
+        unity:
+          - 2022.3.62f1   # package.json 이 선언한 최소 판입니다. 여기서 깨지면 선언이 거짓말입니다.
+          - 6000.0.53f1   # Unity 6 LTS
+
+    steps:
+      - name: 저장소 받기
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: 라이선스 비밀값이 있는지 먼저 보기
+        env:
+          LICENSE: ${{ secrets.UNITY_LICENSE }}
+        run: |
+          if [ -z "$LICENSE" ]; then
+            echo "::error::UNITY_LICENSE 비밀값이 없습니다. 활성화는 한 번만 사람이 해야 합니다 — Documentation~/running-tests.md 의 'CI에서 돌리기' 를 보십시오."
+            exit 1
+          fi
+
+      - name: 껍데기 프로젝트에 Unity 판 적어 넣기
+        # ProjectVersion.txt 를 커밋해 두면 판을 하나 늘릴 때마다 그 파일이 발목을 잡습니다.
+        run: |
+          mkdir -p .ci/project/ProjectSettings
+          printf 'm_EditorVersion: %s\n' '${{ matrix.unity }}' > .ci/project/ProjectSettings/ProjectVersion.txt
+          cat .ci/project/ProjectSettings/ProjectVersion.txt
+
+      - name: Library 캐시
+        uses: actions/cache@v4
+        with:
+          path: .ci/project/Library
+          key: Library-${{ matrix.unity }}-${{ hashFiles('Editor/**/*.cs', 'Tests/**/*.cs', 'package.json') }}
+          restore-keys: |
+            Library-${{ matrix.unity }}-
+            Library-
+
+      - name: EditMode 검사
+        id: tests
+        uses: game-ci/unity-test-runner@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          projectPath: .ci/project
+          unityVersion: ${{ matrix.unity }}
+          testMode: EditMode
+          githubToken: ${{ secrets.GITHUB_TOKEN }}
+          checkName: EditMode ${{ matrix.unity }}
+
+      - name: 결과 파일 올리기
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-${{ matrix.unity }}
+          path: ${{ steps.tests.outputs.artifactsPath }}
+          if-no-files-found: ignore

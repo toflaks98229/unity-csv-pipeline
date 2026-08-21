@@ -3,7 +3,13 @@
 스프레드시트로 저작한 표를 저장하면, 에디터가 그 자리에서 ScriptableObject 에셋으로 굽는 Unity 패키지입니다.
 구글 시트에서 표를 받아오는 동기화와, 에셋을 다시 표로 뽑는 내보내기를 함께 담고 있습니다.
 
-**에디터 전용**입니다. 런타임 어셈블리가 없어 빌드에는 구워진 에셋만 들어갑니다.
+**굽는 일은 전부 에디터에서 일어납니다.** 빌드에 들어가는 것은 구워진 에셋과,
+`[CsvAsset]` 같은 **선언용 속성만 담긴 작은 어셈블리 하나**뿐입니다.
+그 어셈블리에는 실행되는 코드가 없고 `UnityEngine` 조차 참조하지 않습니다.
+
+> 속성을 빌드에 함께 넣는 데는 이유가 있습니다. 게임의 데이터 타입은 **런타임 타입**이고,
+> 런타임 어셈블리는 에디터 어셈블리를 볼 수 없습니다. 속성이 에디터 쪽에 있으면
+> 위 예제가 **에디터에서는 컴파일되고 빌드에서만 깨집니다.**
 
 ```csharp
 [CsvAsset("Clues.csv", "ClueId", OutputFolder = "Assets/Data/Clues")]
@@ -134,8 +140,16 @@ public class VehicleData : ScriptableObject
 | `Separators` | 리스트 셀 구분자 | `;` 과 `\|` |
 | `ReferenceFolder` | 오브젝트 참조를 찾을 폴더 | 프로젝트 전체 |
 
-`[CsvAsset]` 쪽 옵션도 있습니다. `AutoMap = false` 면 `[CsvColumn]` 을 붙인 필드만,
-`DeleteMissing = false` 면 표에서 사라진 행의 에셋을 정리하지 않습니다.
+`[CsvAsset]` 쪽 옵션도 있습니다.
+
+| 옵션 | 하는 일 | 기본값 |
+|---|---|---|
+| `OutputFolder` | 산출물이 놓이는 폴더. 비우면 원본 표 옆의 타입 이름 폴더 | *(비움)* |
+| `AutoMap` | 이름이 맞는 필드를 저절로 연결 | `true` |
+| `DeleteMissing` | 표에서 사라진 행의 에셋을 정리 | `true` |
+| `ReconcileByPath` | 정리 대조를 이름이 아니라 **경로**로 | `false` |
+
+`ReconcileByPath` 는 산출물 폴더에 **이 표가 만들지 않은 같은 타입 에셋**이 섞여 있을 때 켭니다.
 
 ### 다룰 수 있는 타입
 
@@ -364,6 +378,7 @@ Google Sheets ──(에디터가 주기적으로 당김)──▶ CSV 루트/*.
 |---|---|
 | `Tools ▸ CSV Pipeline ▸ 미리보기 (굽지 않고 확인)` | 굽기 전에 무엇이 달라지는지 확인 |
 | `Tools ▸ CSV Pipeline ▸ Rebuild All Data` | CSV 루트의 전 표를 강제 재임포트 |
+| `Tools ▸ CSV Pipeline ▸ 표와 산출물이 어긋나는지 확인` | 표를 고치고 굽기를 잊지 않았는지 확인 |
 | `Tools ▸ CSV Pipeline ▸ ScriptableObject를 표로 내보내기` | 에셋에서 표를 다시 뽑음 |
 | `Tools ▸ CSV Pipeline ▸ Google Sheet에서 받기` | 켜진 항목을 받아 **바뀐 파일만** 기록·재임포트 |
 | `Tools ▸ CSV Pipeline ▸ Google Sheet와 비교만` | 차이만 보고, 파일은 쓰지 않음 |
@@ -432,6 +447,21 @@ public void 표의_값이_에셋에_들어간다()
 ```json
 "testables": [ "com.toflaks.csv-pipeline" ]
 ```
+
+---
+
+## 표를 고치고 굽기를 잊지 않았는지 — CI에서 확인
+
+표 파일이 바뀐 것은 diff 에 보입니다. **산출물이 안 바뀐 것은 diff 에 보이지 않습니다.**
+없는 것은 눈에 띄지 않으니까요. 그래서 표만 고치고 굽기를 잊은 커밋이 조용히 지나갑니다.
+
+```sh
+Unity -batchmode -projectPath . -executeMethod CsvPipeline.CsvDriftCheck.Run
+```
+
+어긋난 표가 있으면 **종료 코드 1** 과 함께 어느 표가 왜 어긋났는지를 로그에 남깁니다.
+**아무것도 쓰지 않습니다.** 판정은 파이프라인 창의 것과 같아서, 화면에서 "바뀌는 것 없음" 인 표가
+CI 에서 실패하는 일은 없습니다.
 
 ---
 

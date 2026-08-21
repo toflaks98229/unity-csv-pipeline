@@ -1,0 +1,9 @@
+{
+  "dependencies": {
+    "com.unity.test-framework": "1.1.33",
+    "com.toflaks.csv-pipeline": "file:../../.."
+  },
+  "testables": [
+    "com.toflaks.csv-pipeline"
+  ]
+}

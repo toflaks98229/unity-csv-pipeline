@@ -10,3 +10,12 @@
 .vs/
 .idea/
 .DS_Store
+
+# CI 껍데기 프로젝트가 만들어 내는 것. 손으로 한 번 돌리면 Unity 가 이것들을 만들어 놓습니다.
+# 남의 플러그인이 manifest.json 에 자기를 끼워 넣기도 하므로, 커밋하는 것은 껍데기 자체뿐입니다.
+.ci/project/ProjectSettings/
+.ci/project/UserSettings/
+.ci/project/Packages/packages-lock.json
+.ci/project/Packages/com.*/
+.ci/project/*.log
+.ci/project/*.xml
