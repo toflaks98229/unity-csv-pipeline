@@ -94,6 +94,10 @@ namespace CsvPipeline
 
             foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
             {
+                // 검사 픽스처는 소비 프로젝트의 데이터가 아닙니다. 끼워 넣은 패키지의 것까지 딸려 오면
+                // 남의 창에 깨진 표로 올라오고, 굽기까지 시도하게 됩니다.
+                if (CsvAssemblies.IsTestAssembly(assembly)) continue;
+
                 Type[] types;
                 try { types = assembly.GetTypes(); }
                 catch (ReflectionTypeLoadException e) { types = e.Types; }   // 일부만 로드된 어셈블리도 훑습니다.
