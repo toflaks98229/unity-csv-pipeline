@@ -398,7 +398,37 @@ namespace CsvPipeline
         /// <returns>찾은 정의들입니다. 표 파일 이름 순입니다.</returns>
         public static List<CsvImportDefinition> DiscoverAll()
         {
-            var found = new List<CsvImportDefinition>();
+            if (_definitionTypes == null) _definitionTypes = ScanDefinitionTypes();
+
+            var found = new List<CsvImportDefinition>(_definitionTypes.Count);
+            foreach (Type type in _definitionTypes)
+            {
+                try { found.Add((CsvImportDefinition)Activator.CreateInstance(type, true)); }
+                catch (Exception) { /* 만들 수 없게 된 정의는 목록에서 빠집니다. */ }
+            }
+
+            found.Sort((a, b) => string.CompareOrdinal(a.FileName, b.FileName));
+            return found;
+        }
+
+        /// <summary>
+        /// 찾아 둔 정의 타입들입니다. <b>인스턴스가 아니라 타입을 들고 있습니다</b> —
+        /// 정의는 굽는 동안 취소 상태를 지니므로, 나눠 쓰면 지난 실행의 상태가 따라옵니다.
+        /// 스크립트를 고치면 도메인이 다시 실리고 이 값도 함께 사라집니다.
+        /// </summary>
+        private static List<Type> _definitionTypes;
+
+        /// <summary>들고 있던 정의 목록을 버립니다.</summary>
+        public static void InvalidateCache() => _definitionTypes = null;
+
+        /// <summary>
+        /// 로드된 어셈블리를 전부 훑어 정의 타입을 찾습니다. <b>비싼 쪽이 이것입니다.</b>
+        /// 창을 새로고침할 때마다 되풀이하지 않도록 결과를 들고 있습니다.
+        /// </summary>
+        /// <returns>찾은 정의 타입들입니다.</returns>
+        private static List<Type> ScanDefinitionTypes()
+        {
+            var found = new List<Type>();
 
             foreach (Assembly assembly in AppDomain.CurrentDomain.GetAssemblies())
             {
@@ -413,12 +443,10 @@ namespace CsvPipeline
                     if (type.GetConstructor(BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic,
                                             null, Type.EmptyTypes, null) == null) continue;
 
-                    try { found.Add((CsvImportDefinition)Activator.CreateInstance(type, true)); }
-                    catch (Exception) { /* 만들 수 없는 정의는 목록에서 빠집니다. */ }
+                    found.Add(type);
                 }
             }
 
-            found.Sort((a, b) => string.CompareOrdinal(a.FileName, b.FileName));
             return found;
         }
     }

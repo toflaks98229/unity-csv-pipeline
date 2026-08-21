@@ -1,9 +1,11 @@
 using System;
 using System.IO;
 using System.Text;
+using System.Text.RegularExpressions;
 using NUnit.Framework;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.TestTools;
 
 namespace CsvPipeline.Tests
 {
@@ -118,10 +120,20 @@ namespace CsvPipeline.Tests
         /// <summary>
         /// 구운 값이 <b>디스크에 남습니다.</b> 메모리 게이트웨이로는 볼 수 없는 자리입니다.
         /// 스크립트 링크가 끊긴 에셋이 만들어지면 값이 하나도 남지 않으므로 여기서 걸립니다.
+        /// <para>
+        /// 파일을 <b>글자로 읽어</b> 확인하므로, Asset Serialization 이 <c>Force Text</c> 가 아닌
+        /// 프로젝트에서는 스스로 건너뜁니다. 이진으로 저장된 파일에 글자가 없는 것은
+        /// 이 패키지의 결함이 아닙니다.
+        /// </para>
         /// </summary>
         [Test]
         public void 구운_값이_파일에_남는다()
         {
+            if (EditorSettings.serializationMode != SerializationMode.ForceText)
+            {
+                Assert.Ignore("Asset Serialization 이 Force Text 가 아니라 파일을 글자로 읽을 수 없습니다.");
+            }
+
             CsvImportReport report = Bake();
 
             Assert.AreEqual(2, report.Created, report.Summary());
@@ -179,6 +191,45 @@ namespace CsvPipeline.Tests
             Assert.AreEqual(1, report.Deleted, report.Summary());
             Assert.IsNull(Load("Widget_B"));
             Assert.IsNotNull(Load("Widget_A"));
+        }
+
+        /// <summary>
+        /// <b>다른 에셋이 붙잡고 있으면 지우지 않습니다.</b> 이 패키지의 1번 안전장치입니다.
+        /// <para>
+        /// 메모리 게이트웨이로는 확인할 수 없습니다 — 거기서는 "참조가 남았다" 를 검사가 손으로
+        /// 알려 주기 때문입니다. 진짜로 물어봐야 하는 자리라 실제 AssetDatabase 위에 둡니다.
+        /// </para>
+        /// </summary>
+        [Test]
+        public void 다른_에셋이_붙잡고_있으면_지우지_않는다()
+        {
+            Bake();
+
+            WidgetData held = Load("Widget_B");
+            Assert.IsNotNull(held);
+
+            string holderPath = $"{_temp}/Holder.asset";
+            using (CsvImport.Suppress())
+            {
+                var holder = ScriptableObject.CreateInstance<WidgetHolder>();
+                holder.widget = held;
+                AssetDatabase.CreateAsset(holder, holderPath);
+                AssetDatabase.SaveAssets();
+                AssetDatabase.Refresh();
+            }
+
+            WriteCsv("Id,Title,MaxSpeed,Stock,OwnerId,HP\nWidget_A,첫 위젯,30,12,Player,100\n");
+
+            LogAssert.Expect(LogType.Warning, new Regex("참조 중이라 보존"));
+            CsvImportReport report = Bake();
+
+            Assert.AreEqual(0, report.Deleted, report.Summary());
+            Assert.AreEqual(1, report.Preserved, report.Summary());
+            Assert.IsNotNull(Load("Widget_B"), "붙잡고 있는 에셋이 있으면 남아야 합니다.");
+
+            // 정말로 붙잡고 있었는지 — 배선이 끊기지 않았는지까지 봅니다.
+            var reloaded = AssetDatabase.LoadAssetAtPath<WidgetHolder>(holderPath);
+            Assert.IsNotNull(reloaded.widget, "참조가 살아 있어야 보존한 뜻이 있습니다.");
         }
     }
 
