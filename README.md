@@ -1,15 +1,15 @@
 # CSV Pipeline
 
-스프레드시트로 저작한 표를 저장하면, 에디터가 그 자리에서 ScriptableObject 에셋으로 굽는 Unity 패키지입니다.
-구글 시트에서 표를 받아오는 동기화와, 에셋을 다시 표로 뽑는 내보내기를 함께 담고 있습니다.
+Author your game data in a spreadsheet. Save it. The editor bakes each row into a ScriptableObject
+asset, right there. It also pulls those tables from Google Sheets, and exports assets back to tables.
 
-**굽는 일은 전부 에디터에서 일어납니다.** 빌드에 들어가는 것은 구워진 에셋과,
-`[CsvAsset]` 같은 **선언용 속성만 담긴 작은 어셈블리 하나**뿐입니다.
-그 어셈블리에는 실행되는 코드가 없고 `UnityEngine` 조차 참조하지 않습니다.
+**All baking happens in the editor.** What ships with your build is the baked assets and one small
+assembly holding the **declarative attributes** such as `[CsvAsset]`. That assembly has no executing
+code and does not even reference `UnityEngine`.
 
-> 속성을 빌드에 함께 넣는 데는 이유가 있습니다. 게임의 데이터 타입은 **런타임 타입**이고,
-> 런타임 어셈블리는 에디터 어셈블리를 볼 수 없습니다. 속성이 에디터 쪽에 있으면
-> 위 예제가 **에디터에서는 컴파일되고 빌드에서만 깨집니다.**
+> The attributes ship with your build on purpose. Your data types are **runtime types**, and a runtime
+> assembly cannot see an editor assembly. If the attributes lived on the editor side, the example
+> below would **compile in the editor and break only in a build.**
 
 ```csharp
 [CsvAsset("Clues.csv", "ClueId", OutputFolder = "Assets/Data/Clues")]
@@ -20,149 +20,266 @@ public class ClueData : ScriptableObject
 }
 ```
 
-이게 전부입니다. `Clues.csv`를 저장하면 행마다 `ClueData` 에셋이 생기고 갱신됩니다.
+That is the whole setup. Save `Clues.csv` and every row becomes a `ClueData` asset, created and kept
+up to date.
 
-> 동작하는 예제가 패키지에 들어 있습니다. **Package Manager ▸ CSV Pipeline ▸ Samples ▸ Quick Start**
+> A working example ships with the package. **Package Manager ▸ CSV Pipeline ▸ Samples ▸ Quick Start**
 >
-> **English**: see [`Documentation~/manual-en.md`](Documentation~/manual-en.md).
+> The full manual is [`Documentation~/manual-en.md`](Documentation~/manual-en.md).
 
 ---
 
-## 왜 쓰나
+## Why
 
-밸런스 수치를 인스펙터에서 하나씩 고치면, 표로 보고 싶을 때 볼 수가 없고 변경 이력도 남지 않습니다.
-표를 단일 출처로 두면 표로 저작하고 git으로 이력을 남길 수 있습니다.
-이 패키지는 그 사이의 반복 작업 — 파일 감지·파싱·에셋 생성·필드 기록·사라진 행 정리 — 을 대신합니다.
+Editing balance numbers one field at a time in the Inspector means you can never see them as a table,
+and nothing records how they changed. Make the table the single source and you author in a spreadsheet
+and keep the history in git. This package handles the repetitive part in between — noticing the file,
+parsing it, creating assets, writing fields, cleaning up rows that went away.
 
-직접 만들면 임포터마다 되풀이하게 되는 것들을 이미 처리해 둡니다.
+It already handles the things you end up rewriting in every hand-written importer.
 
-- **참조가 남은 에셋은 지우지 않습니다.** 표에서 행이 사라져도, 그 에셋의 GUID가 씬·프리팹에서 발견되면
-  경고만 남기고 보존합니다. 지워 버리면 git으로 파일을 되돌려도 GUID가 달라져 배선이 돌아오지 않습니다.
-  **조사할 수 없는 프로젝트에서는 아예 지우지 않습니다.** (아래 참고)
-- **원본 표가 사라져도 산출물 폴더를 지우지 않습니다.** 파일을 잠깐 옮기기만 해도 수작업 데이터가
-  통째로 날아가는 사고를 막습니다.
-- **빈 셀은 기본적으로 기존 값을 보존합니다.** 아이콘·프리팹처럼 표로 표현할 수 없는 필드를
-  인스펙터에서 저작한 채로 두고, 표는 수치만 소유할 수 있습니다.
-- **열 이름이 틀리면 멈춥니다.** 빠진 열을 빈 셀로 취급해 조용히 기본값을 굽지 않습니다.
-  대소문자만 다른 열이 있으면 오타로 보고 함께 알립니다.
-- **식별자가 겹치면 알립니다.** 같은 `Id` 를 가진 행이 둘이면 뒤 행이 앞 행을 덮습니다.
-  건수로는 드러나지 않는 손실이라(앞은 '생성', 뒤는 '갱신') 줄 번호를 달아 경고합니다.
-  대소문자만 다른 것도 겹침으로 봅니다 — 윈도우와 macOS에서 결과가 갈리기 때문입니다.
-- **파일 이름이 될 수 없는 식별자는 거절합니다.** `Item/Sword` 처럼 경로에 쓸 수 없는 값을
-  말없이 바꿔 굽지 않습니다. 고칠 곳은 표입니다.
-- **로케일 독립 파싱**입니다. 소수점이 `,`인 환경에서도 같은 값이 나옵니다.
+- **Assets that are still referenced are never deleted.** When a row disappears from the table, the
+  asset survives with a warning if its GUID is found in a scene or prefab. **Nothing is deleted at all
+  when the scan cannot be trusted** — for instance while an unsaved scene is open.
+- **The output folder is not wiped when the source table goes missing.** Moving a file for a moment
+  must not take a folder of hand-authored data with it.
+- **An empty cell preserves the existing value** by default. Fields a table cannot express — icons,
+  prefabs — stay as you wired them in the Inspector while the table owns just the numbers.
+- **A wrong column name is reported.** When a bound field has no matching column it goes in the report
+  and the field keeps its value — a missing column is never silently treated as an empty cell. A
+  column differing only by spaces, underscores or hyphens is offered as the likely typo. Letter case
+  never matters in the first place. To make a missing column **stop the import**, declare it with
+  `[CsvColumn(Required = true)]`; the identifier column always does.
+- **Duplicate column names are reported.** The later column wins and whatever you wrote in the earlier
+  one is gone — a loss the counts never show. Names differing only by case count as one.
+- **An unterminated double quote refuses to bake.** One stray quote pulls every following row into a
+  single cell, so those rows vanish from the table. They are not even counted as skipped, so the table
+  is treated as unreadable and nothing is deleted.
+- **Duplicate identifiers are reported.** Two rows with the same `Id` mean the second overwrites the
+  first. The counts hide it — the first is "created", the second "updated" — so it is warned with a
+  line number. Identifiers differing only by case count as duplicates too, or the same table would
+  produce different results on Windows and macOS.
+- **An identifier that cannot be a file name is rejected.** A value like `Item/Sword` is never quietly
+  rewritten into something else. The place to fix it is the table.
+- **An ambiguous asset reference is left alone.** When several assets share the name written in a
+  cell, which one gets wired is decided by search order, and that order is not guaranteed. Picking one
+  anyway is **worse than finding none**, because from the outside it looks correctly wired. Every
+  candidate path is reported and the field is left as it was.
+- **Values outside a field's range are not truncated.** `2147483648` into an `int`, or a number past
+  `float` range, keeps the existing value and reports the problem — the same rule every other type
+  follows.
+- **Locale-independent parsing.** The same value comes out where the decimal separator is `,`.
 
 ---
 
-## 설치
+## Install
 
-`Packages/manifest.json` 에 추가합니다.
+Put the package folder at `Packages/com.toflaks.csv-pipeline` in your project. Open Unity and it
+appears under **In Project** in the Package Manager.
+
+You can also use **＋ ▸ Install package from disk…** and pick the package's `package.json`, which
+writes a local path into `Packages/manifest.json`.
 
 ```json
-"com.toflaks.csv-pipeline": "https://github.com/toflaks98229/unity-csv-pipeline.git"
+"com.toflaks.csv-pipeline": "file:../LocalPackages/com.toflaks.csv-pipeline"
 ```
-
-버전을 고정하려면 `#v0.7.0` 처럼 태그를 붙입니다.
-서브모듈로 쓰려면 `Packages/com.toflaks.csv-pipeline` 경로에 두면 됩니다.
-
-`git`이 **Unity가 보는 PATH**에 있어야 합니다. (Git Bash 안에서만 되는 것으로는 부족합니다)
-잘 되는지는 Unity를 열기 전에 이 명령으로 미리 확인할 수 있습니다. 종료코드 0이면 됩니다.
-
-```sh
-GIT_TERMINAL_PROMPT=0 git ls-remote https://github.com/toflaks98229/unity-csv-pipeline.git
-```
-
-> 서브모듈로 쓰는 경우에는 해당하지 않습니다. 이미 클론된 작업 트리를 그대로 쓰기 때문입니다.
 
 ---
 
-## 설정
+## Settings
 
-표 폴더 위치를 **Project Settings ▸ CSV Pipeline** 에서 지정합니다.
-설정 에셋이 없으면 `Assets/CSV` 를 기본값으로 씁니다. (에셋을 말없이 만들지 않습니다)
+Point the package at your table folder in **Project Settings ▸ CSV Pipeline**. With no settings asset,
+`Assets/CSV` is the default. No asset is created behind your back.
 
-| 항목 | 뜻 | 기본값 |
+| Setting | Meaning | Default |
 |---|---|---|
-| CSV 루트 | 임포트 대상 표들이 모인 폴더 | `Assets/CSV` |
-| 시트 연동 설정 | `SheetSync_*.asset` 이 놓이는 폴더 | *(CSV 루트)*`/Editor` |
-| 스냅숏 | 마지막으로 받은 시트 사본 (로컬 수정 감지용) | `Library/CsvSheetSync` |
-| 서비스 계정 키 | 비공개 시트를 읽을 때만 필요 | *(비움)* |
+| CSV root | Folder holding the tables to import | `Assets/CSV` |
+| Sheet sync settings | Where `SheetSync_*.asset` live | *(CSV root)*`/Editor` |
+| Snapshot | Last copy pulled from a sheet, for detecting local edits | `Library/CsvSheetSync` |
+| Service account key | Only needed for private sheets | *(empty)* |
 
-`.csv` 와 `.tsv` / `.tab` 을 함께 다룹니다. 구분자는 확장자로 정합니다.
+`.csv`, `.tsv` and `.tab` are all handled. The delimiter comes from the extension.
 
 ---
 
-## 표 하나 붙이기 — 코드 없이
+## Attaching a table — without code
 
-`[CsvAsset]` 을 ScriptableObject에 붙이면 끝입니다. 임포터를 따로 쓰지 않습니다.
+Put `[CsvAsset]` on a ScriptableObject and you are done. There is no importer to write.
 
 ```csharp
 [CsvAsset("Vehicles.csv", "Id", OutputFolder = "Assets/Data/Vehicles")]
 public class VehicleData : ScriptableObject
 {
-    public float maxSpeed;          // ← MaxSpeed 열 (대소문자 무시)
-    public int   trunkCapacity;     // ← TrunkCapacity 열
-    [SerializeField] private string ownerId;   // private 도 됩니다
+    public float maxSpeed;          // ← MaxSpeed column (case insensitive)
+    public int   trunkCapacity;     // ← TrunkCapacity column
+    [SerializeField] private string ownerId;   // private works too
 }
 ```
 
-필드 이름과 열 이름을 **대소문자를 무시하고** 맞춥니다. `maxSpeed` 필드가 `MaxSpeed` 열에 붙습니다.
-표에 대응 열이 없는 필드는 건드리지 않습니다.
+Field names and column names are matched **ignoring case**, so a `maxSpeed` field binds to a
+`MaxSpeed` column. A field with no matching column is left untouched.
 
-**값이 정수로 보여도 필드가 실수면 실수입니다.** `MaxSpeed` 열의 `30` 은 `float` 로 들어갑니다.
-값만 보고 타입을 정하는 도구가 가장 많이 틀리는 자리인데, 여기서는 필드가 기준이라 어긋나지 않습니다.
+**A value that looks like an integer is still a float if the field is.** The `30` in a `MaxSpeed`
+column goes in as `float`. Deciding a type from the value is where this kind of tool goes wrong most
+often; here the field decides, so the two can never disagree.
 
-`OutputFolder` 를 비우면 산출물이 **원본 표 옆의 타입 이름 폴더**에 놓입니다.
-설치 위치를 미리 알 수 없는 배포용 예제에 씁니다. 보통은 위처럼 적어 두는 편이 낫습니다.
+Leaving `OutputFolder` empty puts the output assets in a **folder named after the type, beside the
+source table**. That suits a shipped example whose install location cannot be known in advance.
+Ordinarily, spell the folder out as above.
 
-### 이름이 다르거나 동작을 바꿔야 할 때
+### If you use assembly definitions
+
+When your data types live **inside an asmdef of your own**, add a `CsvPipeline` reference to it or
+`[CsvAsset]` will not be visible, and compilation stops with `The type or namespace name 'CsvAsset'
+could not be found`.
+
+**Inspector** — select the `.asmdef` holding your data types, add `CsvPipeline` under **Assembly
+Definition References**, then **Apply**.
+
+**By hand** — add one entry to the `.asmdef`:
+
+```json
+{
+  "name": "MyGame.Data",
+  "references": [ "CsvPipeline" ]
+}
+```
+
+For **data types**, reference `CsvPipeline` (the runtime assembly) only. It contains attribute
+declarations, no executing code, and does not even reference `UnityEngine`. Do **not** reference
+`CsvPipeline.Editor` from the assembly holding your data types — it is editor-only, and referencing it
+excludes that assembly from player builds.
+
+**Importers written in code are different.** The `AssetPostprocessor`, `CsvRowImporter` and `SoBaker`
+used under *Attaching a table — in code* all live in `CsvPipeline.Editor`. Put that code in an
+**editor-only asmdef** and reference `CsvPipeline.Editor` there — never from the same assembly as your
+data types.
+
+```json
+{
+  "name": "MyGame.Data.Editor",
+  "references": [ "CsvPipeline", "CsvPipeline.Editor" ],
+  "includePlatforms": [ "Editor" ]
+}
+```
+
+Scripts sitting in `Assets/` without an asmdef (Assembly-CSharp) need no change.
+
+### When names differ, or behaviour has to change
 
 ```csharp
 [CsvColumn("HP", Required = true)]      public int health;
-[CsvColumn(OverwriteWhenEmpty = true)]  public string note;      // 빈 셀이면 지웁니다
+[CsvColumn(OverwriteWhenEmpty = true)]  public string note;      // an empty cell clears it
 [CsvColumn(Separators = "|")]           public List<string> tags;
 [CsvColumn(ReferenceFolder = "Assets/Data/Items")] public ItemData drop;
-[CsvIgnore]                             public Sprite icon;      // 표에서 제외
+[CsvIgnore]                             public Sprite icon;      // kept out of the table
 ```
 
-| 옵션 | 하는 일 | 기본값 |
+| Option | What it does | Default |
 |---|---|---|
-| `Required` | 이 열이 없으면 **표 전체를 반영하지 않습니다** | `false` |
-| `OverwriteWhenEmpty` | 빈 셀로 기존 값을 덮어씁니다 | `false` (=보존) |
-| `Separators` | 리스트 셀 구분자 | `;` 과 `\|` |
-| `ReferenceFolder` | 오브젝트 참조를 찾을 폴더 | 프로젝트 전체 |
+| `Required` | Without this column, **nothing in the table is applied** | `false` |
+| `OverwriteWhenEmpty` | An empty cell overwrites the existing value | `false` (= preserve) |
+| `Separators` | Separators inside a list cell | `;` and `\|` |
+| `ReferenceFolder` | Folder to resolve object references in | whole project |
 
-`[CsvAsset]` 쪽 옵션도 있습니다.
+`[CsvAsset]` has its own options.
 
-| 옵션 | 하는 일 | 기본값 |
+| Option | What it does | Default |
 |---|---|---|
-| `OutputFolder` | 산출물이 놓이는 폴더. 비우면 원본 표 옆의 타입 이름 폴더 | *(비움)* |
-| `AutoMap` | 이름이 맞는 필드를 저절로 연결 | `true` |
-| `DeleteMissing` | 표에서 사라진 행의 에셋을 정리 | `true` |
-| `ReconcileByPath` | 정리 대조를 이름이 아니라 **경로**로 | `false` |
+| `OutputFolder` | Where output assets go. Empty means a type-named folder beside the table | *(empty)* |
+| `AutoMap` | Bind fields whose names match. Off means only `[CsvColumn]` fields | `true` |
+| `DeleteMissing` | Clean up assets whose row left the table | `true` |
+| `ReconcileByPath` | Match cleanup by **path** instead of by name | `false` |
 
-`ReconcileByPath` 는 산출물 폴더에 **이 표가 만들지 않은 같은 타입 에셋**이 섞여 있을 때 켭니다.
+Turn `ReconcileByPath` on when the output folder also holds assets of the same type that this table
+did not create.
 
-### 다룰 수 있는 타입
+### Listing what to leave out, or what to take in — `AutoMap`
 
-`string` · 정수 계열 · `float`/`double` · `bool` · **열거형**(이름으로, 대소문자 무시) ·
-`Vector2/3/4` · `Color`(`#RRGGBB`) · **오브젝트 참조**(에셋 이름으로) ·
-그리고 위 전부의 **배열과 리스트**.
+The default is that **fields whose names match are bound automatically, and you list what to leave out
+with `[CsvIgnore]`**. Flipping `AutoMap = false` inverts it: **you list what to take in, with
+`[CsvColumn]`.**
+
+```csharp
+[CsvAsset("Cards.csv", "Name", AutoMap = false, OutputFolder = "Assets/Data/Cards")]
+public class CardData : ScriptableObject
+{
+    [CsvColumn] public int manaCost;              // ← the table owns these
+    [CsvColumn] public int attackPower;
+
+    public Sprite artwork;                        // untagged, so the table leaves it alone
+    public AssetReferenceGameObject model;        // no need for [CsvIgnore]
+    public List<CardEffect> cardEffects;
+}
+```
+
+**The two fail in different directions.** Under auto-mapping, forgetting `[CsvIgnore]` drags a field
+into the table, and the next export adds a column, which shifts the sheet header and stops sync.
+Under tagging, forgetting `[CsvColumn]` only means the field **is left out**, and anything authored by
+hand stays.
+
+**A matching column in the table is not enough.** An untagged field is preserved whether or not the
+column exists. That is what makes this mode worth using on types that are mostly wiring.
+
+The cost is that a forgotten field goes missing **silently**, so two things report it:
+
+- Generating a table (`Create Table for This Type`) lists fields that were left out but **would become
+  columns if tagged**.
+- Baking warns when a tagged field has no matching column. Tagging by hand is a request for that
+  column, so its absence is a mistake. Under auto-mapping a field without a column is routine, so it
+  is logged as information rather than a warning — but it is always in the report either way.
+
+> On a type where most fields belong in the table, tagging each one is more annotation, not less.
+> The win is on types that carry a few numbers and a lot of wiring.
+
+### Supported types
+
+`string` · integer types · `float` / `double` · `bool` · **enums** (by name, case insensitive) ·
+`Vector2/3/4` · `Color` (`#RRGGBB`) · **object references** (resolved by asset name) ·
+and **arrays and lists** of all of the above.
+
+#### When a reference name is ambiguous
+
+When several assets carry the name written in a cell, **nothing is wired and it is reported.** Every
+candidate path is listed, so you can see where they are.
+
+```
+[row 24 · Drop] There are 3 ItemData assets named 'Sword', so which one is meant cannot be settled.
+Leaving the value as it is.
+  Assets/Data/Items/Sword.asset
+  Assets/Legacy/Sword.asset
+  Assets/Mods/Sword.asset
+Write the path itself in the cell, or narrow the range with [CsvColumn(ReferenceFolder = "…")].
+```
+
+There are two ways out.
+
+- **Write the path in the cell.** `Assets/Data/Items/Sword.asset` instead of `Sword`. The table then
+  says which one it means, and stays right when another asset of that name appears later.
+- **Narrow it with `ReferenceFolder`.** Shorter, when that column always comes from one folder.
+
+**Finding none behaves the same way** — the value is left alone, named, and reported. A typo in the
+table must not wipe out a reference wired by hand.
+
+> These go into the **bake report** in the console. When you bake from the pipeline window with
+> `Bake Now`, one summary dialog is raised as well. **Automatic imports never open a dialog** — a
+> table can have hundreds of rows, and the same baking code is also crossed by the preview and by the
+> CI drift check. Just looking at the list must not raise a dialog.
 
 ---
 
-## 표 하나 붙이기 — 코드로
+## Attaching a table — in code
 
-속성으로 표현되지 않는 표가 있습니다. 값의 의미가 다른 열에 따라 달라지거나,
-행에 따라 만들 구체 타입이 갈리거나, 여러 행이 한 에셋의 리스트가 되는 경우입니다.
-그럴 때는 베이스 넷 중 하나를 골라 상속합니다.
+Some tables cannot be expressed with attributes: the meaning of a value depends on another column, the
+concrete type to create varies by row, or several rows become one list on one asset. Then inherit from
+one of the four bases.
 
-| 베이스 | 표의 모양 |
+| Base | Shape of the table |
 |---|---|
-| `CsvRowImporter<T>` | 한 행 = 한 에셋 |
-| `CsvGroupImporter<T>` | 같은 식별자의 여러 행 = 한 에셋 (행이 리스트 항목) |
-| `CsvPatchImporter<T>` | 이미 있는 에셋의 일부 필드만 갱신 (생성·삭제 안 함) |
-| `CsvSingletonImporter<T>` | 표 전체 = 프로젝트에 하나뿐인 에셋 |
+| `CsvRowImporter<T>` | One row = one asset |
+| `CsvGroupImporter<T>` | Rows sharing an identifier = one asset (rows become list items) |
+| `CsvPatchImporter<T>` | Updates some fields on existing assets (creates and deletes nothing) |
+| `CsvSingletonImporter<T>` | The whole table = the one asset in the project |
 
 ```csharp
 public sealed class ClueImporter : AssetPostprocessor
@@ -186,261 +303,333 @@ public sealed class ClueImporter : AssetPostprocessor
 }
 ```
 
-행에 따라 만들 타입이 갈리면 `CreateOrLoad` 를 재정의합니다. null을 돌려주면 그 행을 건너뜁니다.
+When the type to create varies by row, override `CreateOrLoad`. Returning null skips that row.
 
-> **`CsvGroupImporter` 만 규칙이 반대입니다.** 나머지 셋은 베이스가 `SerializedObject` 를 만들어 넘기고
-> 호출 뒤 적용하므로, 그 경로에서 필드에 **직접 대입하면 적용 시점에 되돌려집니다.** `SoBaker` 로 쓰십시오.
-> 그룹 임포터는 리스트를 통째로 갈아 끼우는 자리라 에셋 필드에 직접 대입합니다.
+> **`CsvGroupImporter` is the one that works the other way round.** The other three have the base
+> create the `SerializedObject` and apply it after the call, so **assigning to a field directly on
+> that path is undone when it applies.** Write through `SoBaker`. The group importer replaces whole
+> lists, so it assigns to asset fields directly.
 
 ---
 
-## 창 하나에서 다 합니다
+## One window for all of it
 
-**`Tools ▸ CSV Pipeline ▸ CSV 파이프라인`**
+**`Tools ▸ CSV Pipeline ▸ Pipeline Window`**
 
-갈래가 셋입니다.
+It has three tabs.
 
-| 갈래 | 무엇을 |
+| Tab | What it shows |
 |---|---|
-| **표** | 표마다 지금 구우면 무엇이 달라지는지. 검색·필터·펼치기, 표별 `지금 굽기` |
-| **시트 연동** | 설정마다 상태 한 줄과 `받기`·`비교`·`선택` |
-| **설정** | 실제 적용되는 경로들과 Project Settings 로 가는 길 |
+| **Tables** | What baking each table right now would change. Search, filter, expand, per-table `Bake Now` |
+| **Sheet Sync** | One status line per config, with pull, compare and select |
+| **Settings** | The paths actually in effect, and a way to Project Settings |
 
-**이 창은 사람이 버튼을 누를 때만 씁니다.** 열어 두는 것만으로는 아무것도 바뀌지 않습니다.
+**This window acts only when a person presses a button.** Leaving it open changes nothing.
 
-표 갈래는 **마우스 없이도 다 됩니다.**
+The Tables tab works **entirely without the mouse.**
 
-| 키 | 하는 일 |
+| Key | What it does |
 |---|---|
-| `↑` `↓` · `Home` `End` | 표 고르기 |
-| `→` `←` | 펼치기 · 접기 |
-| `Space` | 펼침 뒤집기 |
-| `Enter` | 고른 표 굽기 |
-| `Ctrl`(`⌘`)`+F` | 찾기 |
-| `Esc` | 검색어 지우기 |
-| 오른쪽 누르기 | 그 표의 차림표 (굽기 · 표 열기 · 산출물 폴더 · 경로 복사) |
+| `↑` `↓` · `Home` `End` | Select a table |
+| `→` `←` | Expand · collapse |
+| `Space` | Toggle expansion |
+| `Enter` | Bake the selected table |
+| `Ctrl`(`⌘`)`+F` | Find |
+| `Esc` | Clear the search |
+| Right click | That table's menu (bake · open table · output folder · copy path) |
 
-보기는 셋입니다. **바뀌는 것만** · **손볼 것만** · **전부**.
+There are three views: **Changed only** · **Problems only** · **Everything**.
 
-표 갈래는 지금 구우면 무엇이 생기고·바뀌고·지워지는지 적용 전에 보여 줍니다.
+The Tables tab shows what would be created, changed and deleted before anything is applied.
 
 ```
-QuestData · Quests.csv                       생성 1 / 갱신 2 / 삭제 1 / 보존 1
-  ＋ 생성  Quest_NightWatch      5행
-  ·  갱신  Quest_DeepWell        4행
+QuestData · Quests.csv                    created 1 / updated 2 / deleted 1 / preserved 1
+  ＋ Create    Quest_NightWatch      #5
+  ·  Update    Quest_DeepWell        #4
        TimeLimit    900  →  1200
        Difficulty   Normal  →  Hard
-  －  삭제  Quest_Removed
-  ◦  보존  Quest_Old             다른 곳에서 참조 중이라 지우지 않습니다
+  －  Delete    Quest_Removed
+  ◦  Preserve  Quest_Old             still referenced elsewhere, so it is preserved
 ```
 
-`[CsvAsset]` 로 선언한 표는 **어느 열이 무엇에서 무엇으로 바뀌는지**까지 나옵니다.
-사본에 실제 변환기로 구워 본 뒤 비교하므로 미리보기와 실제 결과가 어긋나지 않습니다.
+Tables declared with `[CsvAsset]` show **which column goes from what to what**. The comparison bakes a
+copy with the real converter, so the preview and the result cannot disagree.
 
-직접 작성한 임포터도 목록에 오르며, 생성·갱신·삭제·보존을 에셋 단위로 보여 줍니다.
-다만 **값이 달라지는지까지는 알 수 없어, 이미 있는 행은 모두 '갱신' 으로 셉니다.**
-`Bake` 가 무엇을 쓸지 뼈대가 알 도리가 없기 때문입니다. 속성으로 선언한 표에서만
-"달라지는 것이 없다" 를 말할 수 있습니다.
+Importers written by hand appear in the list too, showing creates, updates, deletes and preserves per
+asset. They cannot tell **whether a value actually differs**, so every existing row counts as
+"updated" — the skeleton has no way to know what `Bake` is going to write. Only tables declared with
+attributes can say "nothing changes".
 
-값이 하나도 달라지지 않는 행은 올라오지 않습니다. 그래야 실제로 바뀌는 것이 눈에 들어옵니다.
+Rows where nothing changes are left out, so what does change stands out.
 
-### ⚠️ 임포트는 Ctrl+Z 로 되돌릴 수 없습니다
+### ⚠️ An import cannot be undone with Ctrl+Z
 
-**의도적으로 지원하지 않습니다.** 한 번의 임포트는 필드 수정·에셋 생성·에셋 삭제를 함께 합니다.
-Unity의 Undo는 이 중 필드 수정만 되돌릴 수 있어서, Ctrl+Z 를 받아 주면 **값은 되돌아가는데
-만들어진 에셋과 지워진 에셋은 그대로 남는** 어긋난 상태가 됩니다.
-그건 되돌릴 수 없는 것보다 나쁩니다. 되돌아간 줄 알고 넘어가게 되기 때문입니다.
+**This is deliberate.** A single import edits fields, creates assets and deletes assets together.
+Unity's Undo can only take back the field edits, so accepting Ctrl+Z would leave you with **values
+rolled back while created and deleted assets stayed** — an inconsistent state. That is worse than not
+undoing at all, because you would move on believing it was undone.
 
-대신 두 가지를 두었습니다.
+Two things stand in its place.
 
-- **미리보기** — 무엇이 달라지는지 적용 전에 확인합니다. 되돌리기가 필요 없게 만드는 쪽입니다.
-- **git** — 산출물이 에셋 파일이므로 커밋해 두면 언제든 되돌아갑니다.
-  이 패키지가 참조 남은 에셋을 지우지 않는 것도 같은 이유입니다. GUID가 사라지면 git으로도 못 돌아옵니다.
+- **Preview** — see what changes before it is applied. The point is to make undo unnecessary.
+- **git** — the outputs are asset files, so a commit takes you back whenever. Restoring the `.asset`
+  **and** its `.meta` together keeps the GUID, so the wiring comes back too. That is also why this
+  package refuses to delete a referenced asset: baking again into a deleted path mints a new GUID, the
+  wiring breaks, and fixing the table will not bring it back.
 
-큰 표를 구울 때는 진행 막대가 뜨고 취소할 수 있습니다. **취소하면 읽은 데까지만 반영되고,
-표에서 사라진 행의 정리는 하지 않습니다.** 아직 읽지 않은 행의 에셋을 사라진 것으로 오해해
-지우면 안 되기 때문입니다.
+Baking a large table raises a progress bar you can cancel. **Cancelling applies what was read so far
+and skips the cleanup of rows that left the table** — the assets of rows not yet read must not be
+mistaken for rows that went away.
 
 ---
 
-### 참조 조사는 어떻게 하는가
+### How the reference scan works
 
-"참조가 남은 에셋은 지우지 않는다"는 **AssetDatabase 가 임포트할 때 만들어 둔 의존성 그래프**에
-묻습니다. 파일이 글자로 저장됐는지 이진으로 저장됐는지와 무관하고, 프로젝트 설정의
-**프리로드 목록**까지 함께 봅니다.
+"Assets that are still referenced are never deleted" is answered by the **dependency graph the
+AssetDatabase builds at import time**. It does not care whether files are stored as text or binary,
+and the **preloaded assets list** in project settings is checked as well.
 
-같이 사라질 것들끼리의 참조는 세지 않습니다. 서로 붙잡아 주면 아무것도 정리되지 않기 때문입니다.
+What gets scanned is decided by **excluding what cannot hold a reference, not by listing what can.**
+Only images, audio, video, models, fonts, scripts, plain text and shaders are excluded; **everything
+else** is scanned — not just scenes, prefabs and `.asset`, but Timeline (`.playable`), presets
+(`.preset`) and animators too. Growing a list of what to include means an extension missing from it
+silently takes its output assets with it.
 
-> 예전에는 파일을 글자로 읽어 GUID 문자열을 찾았습니다. 그 방식은 Asset Serialization 이
-> `Force Text` 가 아닌 프로젝트에서 **무엇을 물어도 "참조 없음"** 을 돌려주었습니다.
-> 실제로 재 보니 참조 300건 중 **0건**을 찾았습니다. 지금 방식은 같은 프로젝트에서 300건을 찾습니다.
+**Embedded and local packages are scanned too.** Projects that split their own code into a package
+under `Packages/` have prefabs in there referencing output assets. Registry packages are read-only, so
+they cannot, and they are skipped.
+
+References among the candidates themselves do not count. If things about to disappear held each other
+up, nothing would ever be cleaned.
+
+**Nothing is deleted while the scan cannot be trusted.** With an unsaved scene open, or a prefab stage
+in progress, wiring you just made by hand is not in the dependency graph yet — it lives only in editor
+memory. Cleanup stops and says so instead of deleting on a stale answer.
+
+> The old approach read files as text looking for GUID strings. In a project whose Asset Serialization
+> is not `Force Text`, that returned **"no references" to every question.** Measured on a real project
+> it found **0 of 300** references. The current approach finds all 300 in the same project.
 
 ---
 
-## 결과 보기
+## Reading results
 
-임포트 결과는 표마다 **한 줄의 로그**로 나옵니다. 흩어진 로그를 뒤질 필요가 없습니다.
+Import results come out as **one log line per table**. There is no scattered logging to dig through.
 
 ```
-[ClueData] Clues.csv — 생성 2 / 갱신 14 / 건너뜀 1 / 보존 1
-  [경고] 23행 · Tier — 'Huge'는 없는 값입니다. (가능: Small/Medium/Large)
-  [경고] 41행 — 'ClueId'가 비어 있어 건너뜁니다.
-  [경고] 표에서 사라졌지만 아직 참조 중이라 보존합니다: Assets/Data/Clues/Clue_Old.asset
+[ClueData] Clues.csv — created 2 / updated 14 / skipped 1 / preserved 1
+  [warn] row 23 · Tier — 'Huge' is not one of the values. (allowed: Small/Medium/Large)
+  [warn] row 41 — 'ClueId' is empty, skipping this row.
+  [warn] Gone from the table but still referenced, so it is preserved: Assets/Data/Clues/Clue_Old.asset
 ```
 
-문제가 있으면 로그가 경고·오류로 올라가고, 클릭하면 원본 표나 문제가 난 에셋으로 갑니다.
+Problems raise the log to a warning or an error, and clicking one takes you to the source table or to
+the asset that had the problem.
 
 ---
 
-## 셀 읽기 — `CsvRow`
+## Reading cells — `CsvRow`
 
-| 메서드 | 하는 일 |
+| Method | What it does |
 |---|---|
-| `GetString(key)` | 앞뒤 공백을 뗀 문자열. 없으면 빈 문자열 |
-| `GetInt / GetFloat(key, fallback)` | 로케일 독립 파싱. 실패하면 fallback |
-| `TryGetInt / TryGetFloat(key, out v)` | 컬럼이 없을 때 기존 값을 보존하고 싶을 때 |
-| `GetBool(key, fallback)` | `TRUE`/`1` = 참, `FALSE`/`0` = 거짓 |
-| `GetList(key)` | `;` 또는 `\|` 로 나눈 토큰 배열 |
-| `Has(key)` / `HasColumn(key)` | 이 행에 셀이 있는지 / 표에 열이 있는지 |
-| `LineNumber` | 원본 줄 번호. 오류 메시지에 위치를 붙일 때 |
+| `GetString(key)` | Trimmed string; empty string when absent |
+| `GetInt / GetFloat(key, fallback)` | Locale-independent parsing; the fallback on failure |
+| `TryGetInt / TryGetFloat(key, out v)` | For preserving the existing value when the column is absent |
+| `GetBool(key, fallback)` | `TRUE`/`1` is true, `FALSE`/`0` is false |
+| `GetList(key)` | Tokens split on `;` or `\|` |
+| `Has(key)` / `HasColumn(key)` | Whether this row has the cell / the table has the column |
+| `LineNumber` | Source line number, for putting a position in an error message |
 
-## 필드 쓰기 — `SoBaker`
+## Writing fields — `SoBaker`
 
-`Set*` 는 값을 그대로 씁니다. **`Set*If` 는 셀이 비어 있으면 건너뛰어 기존 값을 보존합니다.**
+`Set*` writes the value as given. **`Set*If` skips an empty cell, preserving the existing value.**
 
 `SetString(If)` · `SetInt(If)` · `SetFloat(If)` · `SetBool(If)` · `SetEnumIf` · `SetObjectRef` ·
 `SetVector3If` · `SetColorIf`
 
-## 표 저작 규약
+## Table conventions
 
-- **인코딩** UTF-8. BOM은 파서가 제거합니다.
-- **구분자가 든 필드**는 큰따옴표로 감쌉니다. 따옴표 자체는 `""` 로 이스케이프합니다.
-  따옴표 안의 개행도 그대로 보존됩니다. (RFC 4180)
-- **리스트 셀**은 `;` 또는 `|` 로 나눕니다.
-- **숫자**는 로케일 독립입니다. 소수점은 `.` 입니다.
-- **`Vector`** 는 공백이나 `;` 로 나눕니다. (예: `1 0 0`)
-
----
-
-## 에셋을 다시 표로 — 내보내기
-
-에디터에서 손본 값을 표에 되돌립니다. **`[CsvAsset]` 으로 선언된 타입만** 됩니다 —
-직접 작성한 임포터는 표의 구조를 코드로만 알고 있어 자동으로 되돌릴 수 없습니다.
-
-**`Tools ▸ CSV Pipeline ▸ ScriptableObject를 표로 내보내기`**
-
-바뀐 파일 목록을 먼저 보여 주고, 확인해야 씁니다. 내용이 같은 표는 건드리지 않아 git 잡음이 생기지 않습니다.
+- **Encoding** must be UTF-8. A BOM is optional and the parser strips it. UTF-16 with a BOM is read
+  too. **A table that is not UTF-8 refuses to bake.** Windows Excel's `CSV (Comma delimited)` saves in
+  the system code page (CP949 on Korean Windows), not UTF-8; reading that as-is bakes mojibake into
+  your assets, and the next export writes the mojibake back over the source table. It is not read
+  through the system code page because then the same table would bake different values on different
+  machines. In Excel choose `Save As ▸ CSV UTF-8 (Comma delimited)`.
+  Files this tool **writes** get a BOM by default — without one, Excel opens them broken.
+  (Project Settings ▸ CSV Pipeline ▸ `Write Utf8 Bom`)
+- **Fields containing the delimiter** are wrapped in double quotes, and a quote itself is escaped as
+  `""`. Newlines inside quotes are preserved. (RFC 4180)
+- **List cells** are split on `;` or `|`.
+- **Numbers** are locale independent. The decimal separator is `.`.
+- **Vectors** split on whitespace or `;` — for example `1 0 0`.
 
 ---
 
-## 구글 시트 연동 (선택)
+## Generating a table from a type — a draft for the sheet
 
-표를 손으로 편집하는 대신 시트에서 저작하고 받아올 수 있습니다.
-파이프라인은 그대로입니다 — 동기화 도구는 시트 내용으로 표를 덮고 강제 재임포트할 뿐이고,
-그 뒤 에셋 생성은 원래 경로를 그대로 탑니다.
+You do not have to type column names by hand to start a table. Pick a type and its **fields are read**
+into a table with the columns already in place. Put it on your drive and start authoring.
+
+**Right click in the Project window ▸ `CSV Pipeline ▸ Create Table for This Type`**
+(or **`Tools ▸ CSV Pipeline ▸ Create Table from ScriptableObject`**)
+
+Pick either a ScriptableObject **asset** or its **script (`.cs`)**.
+
+- **`[CsvAsset]` does not have to be there yet.** Before the table exists, having no declaration is
+  the normal state. When one is there, its file name, identifier column and column names are followed
+  exactly.
+- **The format follows the extension.** Save it as `.csv` for commas, `.tsv` for tabs. That is the
+  same rule used when reading a table, so the two cannot drift apart.
+- **Existing assets fill in rows.** Use it to move data you have been authoring in the Inspector onto
+  a sheet. With no assets you get the header line alone.
+- **Only columns that can be read back are generated.** Fields a table cannot author — `Rect`,
+  `AnimationCurve` — are left out, and **what was left out and why is reported.** Generating them
+  would have you fill the sheet in and then drown in per-row warnings on the way back. Not generating
+  a column beats generating one that fails later.
+- **With no declaration, a `[CsvAsset]` line to paste comes with it.** Generating the table and
+  forgetting the declaration leaves a table that bakes nothing. There is a copy button on the dialog,
+  and it goes to the console as well.
+
+> When a table of the same name already exists, **the column spellings written in it are reused.**
+> If `MaxSpeed` turned into `maxSpeed` on every regeneration, the header would drift from the sheet
+> and sync would stop.
+
+---
+
+## Assets back to a table — export
+
+Puts values you edited in the editor back into the table. **Only types declared with `[CsvAsset]`**
+can do this — a hand-written importer knows the table's shape only in code, so it cannot be reversed
+automatically.
+
+**`Tools ▸ CSV Pipeline ▸ Export Assets to Tables`**
+
+The list of files that change is shown first, and nothing is written until you confirm. Tables whose
+content matches are left alone, so no git noise appears.
+
+**Columns the table has but baking does not read — a notes column, the column of a `[CsvIgnore]`
+field — are carried through with their values.** Only what this package owns is rewritten.
+
+---
+
+## Google Sheets sync (optional)
+
+Instead of editing tables by hand, author in a sheet and pull. The pipeline does not change — the sync
+tool overwrites the table with the sheet's content and forces a reimport, and asset creation takes the
+same path it always did.
 
 ```
-Google Sheets ──(에디터가 주기적으로 당김)──▶ CSV 루트/*.csv
-                                                   │ (AssetPostprocessor)
-                                                   ▼
-                                           ScriptableObject 재생성
+Google Sheets ──(the editor pulls periodically)──▶ CSV root/*.csv
+                                                        │ (AssetPostprocessor)
+                                                        ▼
+                                              ScriptableObjects rebuilt
 ```
 
-### 공개 시트로 쓰기
+### Using a public sheet
 
-1. 시트를 **공유 → 링크가 있는 모든 사용자 → 뷰어** 로 설정합니다.
-2. 대상 탭을 연 상태의 **주소를 그대로 복사**합니다.
-3. `Tools ▸ CSV Pipeline ▸ Google Sheet 설정 에셋 만들기` 로 표마다 설정 에셋을 만듭니다.
-4. 에셋의 `Sheet Url` 에 붙여넣고 `Enabled` 를 켭니다.
+1. Set the sheet to **Share → Anyone with the link → Viewer**.
+2. **Copy the address as-is** with the target tab open.
+3. Create a settings asset per table with `Tools ▸ CSV Pipeline ▸ Create Google Sheet Settings`.
+4. Paste into the asset's `Sheet Url` and turn `Enabled` on.
 
-시트 ID와 gid를 따로 받지 않는 이유는, 그 둘을 손으로 옮겨 적는 과정이 실수가 가장 많이 나는
-지점이기 때문입니다. 특히 gid를 잘못 적으면 **엉뚱한 탭의 내용이 조용히 들어옵니다.**
+The sheet ID and gid are not asked for separately because copying those two by hand is where mistakes
+happen most. A wrong gid in particular means **the contents of the wrong tab arrive silently.**
 
-### 비공개 시트로 쓰기
+### Using a private sheet
 
-사내 데이터라 공개할 수 없다면 **서비스 계정**을 씁니다. 브라우저 로그인 흐름이 없어 배치 모드에서도 됩니다.
+When the data is internal and cannot be public, use a **service account**. There is no browser login
+flow, so it works in batch mode too.
 
-1. Google Cloud Console에서 프로젝트를 만들고 **Google Drive API**를 켭니다.
-2. **서비스 계정**을 만들고 **JSON 키**를 내려받습니다.
-3. 키 파일을 **`Assets` 밖**에 두고 **버전 관리에서 제외**합니다. (예: 프로젝트 루트의 `.secrets/`)
-4. Project Settings ▸ CSV Pipeline 의 **서비스 계정 키**에 그 경로를 적습니다.
-5. 시트를 그 서비스 계정 **이메일 주소와 공유**합니다. (뷰어면 충분합니다)
+1. Create a project in the Google Cloud Console and enable the **Google Drive API**.
+2. Create a **service account** and download a **JSON key**.
+3. Put the key file **outside `Assets`** and **out of version control** — for example `.secrets/` at
+   the project root.
+4. Point **Service account key** in Project Settings ▸ CSV Pipeline at that path.
+5. **Share the sheet with the service account's email address.** Viewer is enough.
 
-> 키 파일 내용은 로그에 절대 실리지 않습니다. 다만 키를 커밋하면 저장소를 가진 누구나 시트를 읽을 수 있으니
-> `.gitignore` 에 넣었는지 확인하십시오.
+> The key's contents never appear in a log. Committing the key would let anyone with the repository
+> read the sheet, so check that it is in `.gitignore`.
 
-### 메뉴
+### Menus
 
-| 메뉴 | 하는 일 |
+| Menu | What it does |
 |---|---|
-| `Tools ▸ CSV Pipeline ▸ CSV 파이프라인` | 파이프라인 창 열기 |
-| `Tools ▸ CSV Pipeline ▸ 전체 다시 굽기` | CSV 루트의 전 표를 강제 재임포트 |
-| `Tools ▸ CSV Pipeline ▸ 에셋을 표로 내보내기` | 에셋에서 표를 다시 뽑음 |
-| `Tools ▸ CSV Pipeline ▸ 표와 산출물이 어긋나는지 확인` | 표를 고치고 굽기를 잊지 않았는지 확인 |
-| `Tools ▸ CSV Pipeline ▸ Google Sheet에서 받기` | 켜진 항목을 받아 **바뀐 파일만** 기록·재임포트 |
-| `Tools ▸ CSV Pipeline ▸ Google Sheet와 비교만` | 차이만 보고, 파일은 쓰지 않음 |
-| `Tools ▸ CSV Pipeline ▸ Google Sheet 설정 만들기` | 설정이 없는 표에 에셋 생성 |
+| `Tools ▸ CSV Pipeline ▸ Pipeline Window` | Open the pipeline window |
+| `Tools ▸ CSV Pipeline ▸ Rebuild All Tables` | Force a reimport of every table under the CSV root |
+| `Tools ▸ CSV Pipeline ▸ Export Assets to Tables` | Regenerate tables from assets |
+| `Tools ▸ CSV Pipeline ▸ Create Table from ScriptableObject` | Draft a table from the selected type's fields |
+| `Tools ▸ CSV Pipeline ▸ Check for Drift` | Check that you did not edit a table and forget to bake |
+| `Tools ▸ CSV Pipeline ▸ Pull from Google Sheets` | Pull enabled configs, writing and reimporting **only changed files** |
+| `Tools ▸ CSV Pipeline ▸ Compare with Google Sheets` | Report differences without writing anything |
+| `Tools ▸ CSV Pipeline ▸ Create Google Sheet Settings` | Create settings assets for tables that lack one |
 
-미리보기·모두 펼치기·설정 폴더 열기는 메뉴가 아니라 **창 안에** 있습니다.
+Preview, expand-all and open-settings-folder are **inside the window**, not in the menu. Generating a
+table is also on the Project window's right-click menu
+(`CSV Pipeline ▸ Create Table for This Type`).
 
-`전체 다시 굽기` 가 필요한 이유는 `AssetPostprocessor` 가 파일이 **변경될 때만** 발화하기 때문입니다.
-임포터를 고친 뒤 산출물을 다시 굽거나, 새 표를 처음 굽고 싶을 때 씁니다.
-끝난 뒤 `CsvRebuildMenu.AfterRebuildAll` 이벤트가 불리므로, 프로젝트별 마무리 작업을 붙일 수 있습니다.
+`Rebuild All Tables` exists because `AssetPostprocessor` only fires when a file **changes**. Use it to
+rebake outputs after editing an importer, or to bake a new table for the first time. The
+`CsvRebuildMenu.AfterRebuildAll` event fires when it finishes, so you can attach project-specific
+follow-up work.
 
-### 안전장치
+### Safeguards
 
-- **HTML 응답 거부** — 시트에 접근할 권한이 없으면 구글은 오류가 아니라 **로그인 HTML을 HTTP 200으로**
-  돌려줍니다. 그대로 기록하면 표가 HTML로 덮여 에셋이 통째로 망가지므로 감지해 거부합니다.
-- **헤더 불일치 확인** — 첫 줄이 다르면 열을 바꿨거나 엉뚱한 탭을 가리키는 것이라 확인을 받습니다.
-  (자동 받기 경로에서는 대화상자를 띄울 수 없으므로 건너뛰고 경고만 남깁니다)
-- **동일 내용은 기록하지 않음** — 불필요한 재임포트와 git 잡음을 막습니다.
-- **로컬 수정 감지** — 마지막 동기화본과 비교해 손댄 흔적을 알립니다.
+- **HTML responses are rejected** — without permission to reach the sheet, Google returns a **login
+  page as HTTP 200**, not an error. Writing that through would overwrite the table with HTML and
+  destroy the assets, so it is detected and refused.
+- **Header mismatch confirmation** — a different first line means the columns changed or the wrong tab
+  is targeted, so you are asked. The automatic path cannot raise a dialog, so it skips the pull and
+  warns instead.
+- **Identical content is not written** — no needless reimports, no git noise.
+- **Local edit detection** — compared against the last synced copy, so edits made locally are reported.
 
-### ⚠️ 연동을 켜면 진실의 소유자가 옮겨갑니다
+### ⚠️ Turning sync on moves ownership of the truth
 
-켠 파일은 **시트가 저작 원본, 로컬 표는 사본, git은 이력**입니다.
-양쪽에서 고치면 값이 갈라지고, 동기화가 도는 순간 표 쪽 수정이 사라집니다.
+For an enabled file, **the sheet is the source, the local table is a copy, and git is the history.**
+Editing both sides makes the values diverge, and the moment sync runs, the table-side edit is gone.
 
-**코드에서 컬럼을 늘렸다면 시트에도 붙여넣어야 합니다.** 헤더가 어긋난 동안 자동 받기는 그 파일을
-건너뛰고, 그 상태로 받아 버리면 새 컬럼이 통째로 사라집니다. (시트에는 아직 없으므로)
+**Adding a column in code means adding it to the sheet too.** While the headers disagree the automatic
+pull skips that file, and pulling anyway drops the new column entirely — the sheet does not have it
+yet.
 
 ---
 
-## 직접 만든 임포터 검사하기
+## Testing importers you wrote
 
-굽기 규칙은 **에셋을 하나도 만들지 않고** 확인할 수 있습니다. `MemoryAssetGateway` 를 끼우면
-표도 산출물도 메모리에만 있어, 임시 폴더도 재임포트도 필요 없습니다.
+Baking rules can be checked **without creating a single asset**. Plug in `MemoryAssetGateway` and both
+the table and the outputs stay in memory — no temp folder, no reimport.
 
 ```csharp
 [Test]
-public void 표의_값이_에셋에_들어간다()
+public void Values_from_the_table_reach_the_asset()
 {
     const string path = "Assets/Memory/Quests.csv";
 
     using var assets = new MemoryAssetGateway()
-        .WithTable(path, "Id,Title,Reward\nQ_01,첫 의뢰,100\n");
+        .WithTable(path, "Id,Title,Reward\nQ_01,First Errand,100\n");
 
     using (CsvAssets.Use(assets))
     {
         CsvImportReport report = new QuestImporter().Run(path);
 
         Assert.AreEqual(1, report.Created);
-        Assert.AreEqual("첫 의뢰", assets.Get<QuestData>("Assets/Memory/QuestData/Q_01.asset").title);
+        Assert.AreEqual("First Errand", assets.Get<QuestData>("Assets/Memory/QuestData/Q_01.asset").title);
     }
 }
 ```
 
-거들 것 몇 가지:
+A few things that help:
 
-| 무엇 | 쓰임 |
+| What | For |
 |---|---|
-| `WithTable(path, text)` | 표 원문을 놓습니다. 폴더도 함께 생깁니다 |
-| `WithAsset(path, asset)` · `Add<T>(path)` | 이미 있는 산출물을 놓습니다 |
-| `Get<T>(path)` | 구워진 결과를 읽습니다 |
-| `Referenced` | 여기 넣은 경로는 "참조가 남은 것"으로 취급돼 정리에서 보존됩니다 |
-| `SaveCount` | 저장이 몇 번 일어났는지 |
+| `WithTable(path, text)` | Places the table text. The folder comes with it |
+| `WithAsset(path, asset)` · `Add<T>(path)` | Places an output asset that already exists |
+| `Get<T>(path)` | Reads what was baked |
+| `Referenced` | Paths put here count as still referenced, so cleanup preserves them |
+| `SaveCount` · `DirtyCount` · `BatchCount` | How often saving, dirtying and batching happened |
 
-검사가 목록에 보이려면 소비하는 프로젝트의 `Packages/manifest.json` 에 `testables` 가 필요합니다.
+For the tests to appear in the list, the consuming project's `Packages/manifest.json` needs
+`testables`.
 
 ```json
 "testables": [ "com.toflaks.csv-pipeline" ]
@@ -448,50 +637,59 @@ public void 표의_값이_에셋에_들어간다()
 
 ---
 
-## 표를 고치고 굽기를 잊지 않았는지 — CI에서 확인
+## Editing a table and forgetting to bake — checking in CI
 
-표 파일이 바뀐 것은 diff 에 보입니다. **산출물이 안 바뀐 것은 diff 에 보이지 않습니다.**
-없는 것은 눈에 띄지 않으니까요. 그래서 표만 고치고 굽기를 잊은 커밋이 조용히 지나갑니다.
+A changed table file shows up in the diff. **An unchanged output asset does not.** Absence is not
+noticeable, so a commit that edits the table and forgets to bake slips through quietly.
 
 ```sh
 Unity -batchmode -projectPath . -executeMethod CsvPipeline.CsvDriftCheck.Run
 ```
 
-어긋난 표가 있으면 **종료 코드 1** 과 함께 어느 표가 왜 어긋났는지를 로그에 남깁니다.
-**아무것도 쓰지 않습니다.** 판정은 파이프라인 창의 것과 같아서, 화면에서 "바뀌는 것 없음" 인 표가
-CI 에서 실패하는 일은 없습니다.
+A table that has drifted gives **exit code 1** and logs which table drifted and why. **Nothing is
+written.** The judgement is the same one the pipeline window makes, so a table showing "nothing
+changes" on screen will not fail in CI.
 
 ---
 
-## 고지
+## Support
 
-**네트워크.** 구글 시트 연동은 선택 기능이고, 켰을 때만 나가는 요청이 생깁니다.
-접속하는 곳은 **둘뿐**입니다.
+Questions, bug reports and requests go in **the reviews section of this package's Unity Asset Store
+product page**. They are answered there, in public, so the answer stays where the next person with the
+same question will find it.
 
-| 호스트 | 언제 |
+Two things make a report answerable in one round instead of three:
+
+- **The console log line for the table involved.** Every import prints one line per table, with the
+  warnings underneath it. That line names the table, the counts, and the rows that had problems.
+- **Your Unity version and how the package was installed** (Package Manager, or a local folder).
+
+If a table is losing data, keep the table file as it was when it went wrong. The parser is strict about
+encoding, quoting and duplicate columns, and the original file usually says which of the three it was.
+
+Licence questions — seats, refunds, invoices — are handled by Unity rather than by the publisher,
+because the Asset Store EULA governs that. See [`LICENSE.md`](LICENSE.md).
+
+---
+
+## Disclosures
+
+**Network.** Google Sheets sync is optional, and requests happen only once you turn it on. There are
+**exactly two** hosts.
+
+| Host | When |
 |---|---|
-| `docs.google.com` | 시트 내용을 받을 때 |
-| `oauth2.googleapis.com` | 서비스 계정을 설정했을 때, 액세스 토큰을 받으러 |
+| `docs.google.com` | Fetching a sheet's contents |
+| `oauth2.googleapis.com` | Getting an access token, when a service account is configured |
 
-**연동 설정 에셋을 만들어 켜기 전에는 아무 데도 아무것도 보내지 않습니다.**
-자동 받기는 기본이 꺼짐(`autoPull = false`)입니다. 원격 측정이나 분석은 하지 않습니다.
-(창의 `?` 단추는 브라우저로 이 저장소의 README 를 엽니다 — 사람이 누를 때만입니다)
+**Before you create a sync settings asset and enable it, nothing is sent anywhere.** Automatic pulling
+is off by default (`autoPull = false`). There is no telemetry and no analytics.
+The window's `?` button opens the documentation that ships inside the package — only when clicked.
 
-**자격증명 보관.** 비공개 시트를 쓸 때 **여러분이 지정한 경로**의 구글 서비스 계정 JSON 키를 읽습니다.
-키는 **프로젝트로 복사되지 않고, 빌드에 들어가지 않으며, 로그에 실리지 않습니다.**
-설정 에셋에 남는 것은 파일 경로뿐입니다. 키 파일을 `Assets` 밖에 두고 버전 관리에서 빼는 것은
-쓰는 쪽의 몫이며, 그 방법은 위 [비공개 시트로 쓰기](#비공개-시트로-쓰기) 에 적어 두었습니다.
+**Credential handling.** For a private sheet, the Google service account JSON key is read from **a path
+you specify**. The key is **never copied into your project, never included in a build, and never
+written to a log.** What the settings asset holds is the file path. Keeping the key file outside
+`Assets` and out of version control is yours to do, and how is written under
+[Using a private sheet](#using-a-private-sheet) above.
 
-**외부 의존성.** 없습니다. 패키지 의존성이 하나도 없고 남의 코드를 담고 있지 않습니다.
-
-**AI 보조.** 이 패키지는 AI 도구의 보조를 받아 작성했습니다. 코드는 사람이 검토했고,
-난독화하지 않았으며, 함께 들어 있는 자동 검사가 덮고 있습니다.
-
-> 에셋스토어에 낸다면 이 네 가지는 **스토어 설명란에도** 있어야 합니다.
-> (네트워크 사용·키 보관 방식·AI 고지)
-
----
-
-## 라이선스
-
-MIT
+**External dependencies.** None. The package declares no dependencies and contains no third-party code.

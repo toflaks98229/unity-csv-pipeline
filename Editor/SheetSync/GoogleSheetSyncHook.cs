@@ -4,16 +4,16 @@ using UnityEditor;
 namespace CsvPipeline
 {
     /// <summary>
-    /// 연동 설정 에셋이 생기거나 사라질 때 자동 받기 루프를 걸고 뗍니다.
-    /// 이 덕분에 시트 연동을 쓰지 않는 프로젝트에는 매 프레임 콜백이 아예 남지 않습니다.
+    /// Installs and removes the automatic pull loop as sync settings assets appear and disappear.
+    /// Thanks to this, a project that does not use sheet sync keeps no per-frame callback at all.
     /// </summary>
     internal sealed class GoogleSheetSyncHook : AssetPostprocessor
     {
-        /// <summary>에셋 변화 통지에서 설정 에셋이 관련됐을 때만 루프를 다시 판정합니다.</summary>
-        /// <param name="imported">임포트된 에셋 경로들입니다.</param>
-        /// <param name="deleted">삭제된 에셋 경로들입니다.</param>
-        /// <param name="moved">이동된 에셋의 새 경로들입니다.</param>
-        /// <param name="movedFrom">이동된 에셋의 이전 경로들입니다.</param>
+        /// <summary>Re-decides the loop only when an asset change notification involves a settings asset.</summary>
+        /// <param name="imported">Paths of imported assets.</param>
+        /// <param name="deleted">Paths of deleted assets.</param>
+        /// <param name="moved">New paths of moved assets.</param>
+        /// <param name="movedFrom">Previous paths of moved assets.</param>
         private static void OnPostprocessAllAssets(string[] imported, string[] deleted, string[] moved, string[] movedFrom)
         {
             if (!TouchesAsset(imported) && !TouchesAsset(deleted) && !TouchesAsset(moved)) return;
@@ -21,9 +21,9 @@ namespace CsvPipeline
             GoogleSheetSync.RefreshAutoPullHook();
         }
 
-        /// <summary>목록에 <c>.asset</c> 파일이 하나라도 있는지 여부입니다.</summary>
-        /// <param name="paths">검사할 경로들입니다.</param>
-        /// <returns>있으면 true입니다.</returns>
+        /// <summary>Whether the list holds at least one <c>.asset</c> file.</summary>
+        /// <param name="paths">Paths to inspect.</param>
+        /// <returns>True when one is present.</returns>
         private static bool TouchesAsset(string[] paths)
         {
             if (paths == null) return false;

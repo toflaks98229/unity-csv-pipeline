@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.IO;
 using UnityEngine;
@@ -5,16 +6,17 @@ using UnityEngine;
 namespace CsvPipeline
 {
     /// <summary>
-    /// 특정 에셋 타입(<typeparamref name="T"/>)을 에셋 이름으로 색인하는 범용 인덱스입니다.
-    /// (CSV 셀에 적힌 이름으로 다른 에셋을 참조해야 할 때 사용. 선택적으로 폴더 범위를 한정)
+    /// A general-purpose index that indexes one asset type (<typeparamref name="T"/>) by asset name.
+    /// (Use it when a name written in a CSV cell has to reference another asset. Optionally limited to a folder.)
     /// </summary>
-    /// <typeparam name="T">색인할 에셋 타입입니다.</typeparam>
-    public class AssetNameIndex<T> where T : Object
+    /// <typeparam name="T">Asset type to index.</typeparam>
+    public class AssetNameIndex<T> where T : UnityEngine.Object
     {
-        private readonly Dictionary<string, T> _byName = new Dictionary<string, T>();
+        private readonly Dictionary<string, T> _byName
+            = new Dictionary<string, T>(StringComparer.OrdinalIgnoreCase);
 
-        /// <summary>지정 폴더(없으면 프로젝트 전체)에서 T 에셋을 이름으로 색인합니다.</summary>
-        /// <param name="folder">검색 범위 폴더입니다. 비우면 프로젝트 전체입니다.</param>
+        /// <summary>Indexes the T assets by name in the given folder, or across the whole project when there is none.</summary>
+        /// <param name="folder">Folder to search within. Empty searches the whole project.</param>
         public void Build(string folder = null)
         {
             _byName.Clear();
@@ -26,16 +28,16 @@ namespace CsvPipeline
             }
         }
 
-        /// <summary>이름으로 에셋을 조회합니다. 없으면 null(옵션에 따라 경고).</summary>
-        /// <param name="name">찾을 에셋 이름입니다. (확장자 제외)</param>
-        /// <param name="logTag">지정하면 못 찾았을 때 이 태그로 경고를 남깁니다.</param>
-        /// <returns>찾은 에셋이거나 null입니다.</returns>
+        /// <summary>Looks up an asset by name. Returns null when there is none, optionally with a warning.</summary>
+        /// <param name="name">Asset name to find. (without the extension)</param>
+        /// <param name="logTag">When given, logs a warning under this tag if nothing is found.</param>
+        /// <returns>The asset found, or null.</returns>
         public T Resolve(string name, string logTag = null)
         {
             if (string.IsNullOrEmpty(name)) return null;
             if (_byName.TryGetValue(name, out T asset)) return asset;
             if (!string.IsNullOrEmpty(logTag))
-                Debug.LogWarning($"{logTag} '{typeof(T).Name}' 에셋 '{name}'을(를) 찾지 못했습니다.");
+                Debug.LogWarning($"{logTag} Could not find the '{typeof(T).Name}' asset '{name}'.");
             return null;
         }
     }

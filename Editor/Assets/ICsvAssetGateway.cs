@@ -5,98 +5,129 @@ using UnityEngine;
 namespace CsvPipeline
 {
     /// <summary>
-    /// 파이프라인이 에셋 저장소에 닿는 <b>유일한 통로</b>입니다.
-    /// 이 경계 덕분에 굽기·계획·내보내기 로직을 살아 있는 Unity 프로젝트 없이 검사할 수 있습니다.
+    /// The <b>only path</b> through which the pipeline touches the asset store.
+    /// This boundary lets the baking, planning, and export logic be tested without a live Unity project.
     /// </summary>
     public interface ICsvAssetGateway
     {
-        /// <summary>지정한 이름의 표 파일 경로를 찾습니다.</summary>
-        /// <param name="fileName">찾을 파일 이름입니다. 확장자를 포함합니다.</param>
-        /// <returns>찾은 경로이거나, 없으면 null입니다.</returns>
+        /// <summary>Finds the path of the table file with the given name.</summary>
+        /// <param name="fileName">File name to look for. Includes the extension.</param>
+        /// <returns>The path found, or null when there is none.</returns>
         string FindTablePath(string fileName);
 
-        /// <summary>표 파일의 원문을 읽습니다.</summary>
-        /// <param name="path">읽을 경로입니다.</param>
-        /// <returns>원문이거나, 읽지 못했으면 null입니다.</returns>
+        /// <summary>Reads the text of a table file.</summary>
+        /// <param name="path">Path to read.</param>
+        /// <returns>The text, or null when it could not be read.</returns>
         string ReadText(string path);
 
-        /// <summary>폴더가 있는지 여부입니다.</summary>
-        /// <param name="folder">확인할 폴더 경로입니다.</param>
-        /// <returns>있으면 true입니다.</returns>
+        /// <summary>
+        /// Reads the text of a table file, and when it cannot be read, hands back <b>why</b> as well.
+        /// <para>
+        /// The reason is needed because of encoding. Reading fails when the file is not UTF-8, and
+        /// returning only null leaves the caller unable to tell "the file is missing" from "the characters
+        /// cannot be read", so it gives the person <b>advice they cannot act on</b>.
+        /// </para>
+        /// </summary>
+        /// <param name="path">Path to read.</param>
+        /// <param name="problem">Receives the reason it could not be read. Null on success, or when the file is missing.</param>
+        /// <returns>The text, or null when it could not be read.</returns>
+        string ReadText(string path, out string problem);
+
+        /// <summary>Whether the folder exists.</summary>
+        /// <param name="folder">Folder path to check.</param>
+        /// <returns>True when it exists.</returns>
         bool FolderExists(string folder);
 
-        /// <summary>없으면 부모부터 순차적으로 폴더를 만듭니다.</summary>
-        /// <param name="folder">보장할 폴더 경로입니다.</param>
+        /// <summary>Creates the folder when it is missing, parents first, in order.</summary>
+        /// <param name="folder">Folder path to ensure.</param>
         void EnsureFolder(string folder);
 
-        /// <summary>지정 경로의 에셋을 로드하거나, 없으면 만듭니다.</summary>
-        /// <param name="type">만들 ScriptableObject 타입입니다.</param>
-        /// <param name="path">에셋 경로입니다.</param>
-        /// <param name="created">새로 만들었으면 true를 받습니다.</param>
-        /// <returns>로드하거나 만든 에셋입니다.</returns>
+        /// <summary>Loads the asset at the given path, or creates it when there is none.</summary>
+        /// <param name="type">ScriptableObject type to create.</param>
+        /// <param name="path">Asset path.</param>
+        /// <param name="created">Receives true when it was newly created.</param>
+        /// <returns>The asset loaded or created.</returns>
         ScriptableObject CreateOrLoad(Type type, string path, out bool created);
 
-        /// <summary>지정 경로의 에셋을 로드합니다.</summary>
-        /// <param name="path">에셋 경로입니다.</param>
-        /// <param name="type">기대하는 타입입니다.</param>
-        /// <returns>찾은 에셋이거나 null입니다.</returns>
+        /// <summary>Loads the asset at the given path.</summary>
+        /// <param name="path">Asset path.</param>
+        /// <param name="type">Expected type.</param>
+        /// <returns>The asset found, or null.</returns>
         UnityEngine.Object Load(string path, Type type);
 
-        /// <summary>에셋의 경로입니다.</summary>
-        /// <param name="asset">대상 에셋입니다.</param>
-        /// <returns>경로이거나, 저장돼 있지 않으면 빈 문자열입니다.</returns>
+        /// <summary>Path of the asset.</summary>
+        /// <param name="asset">Target asset.</param>
+        /// <returns>The path, or an empty string when it is not saved.</returns>
         string PathOf(UnityEngine.Object asset);
 
-        /// <summary>타입 필터에 맞는 에셋 경로들을 찾습니다.</summary>
-        /// <param name="typeFilter">검색 필터입니다. (예: "t:ItemData")</param>
-        /// <param name="folder">검색 범위 폴더입니다. null이면 전체입니다.</param>
-        /// <returns>찾은 경로들입니다. 정렬은 보장하지 않습니다.</returns>
+        /// <summary>Finds the asset paths matching a type filter.</summary>
+        /// <param name="typeFilter">Search filter. (for example, "t:ItemData")</param>
+        /// <param name="folder">Folder the search is limited to. Null searches everything.</param>
+        /// <returns>The paths found. Their order is not guaranteed.</returns>
         IReadOnlyList<string> FindPaths(string typeFilter, string folder = null);
 
-        /// <summary>에셋이 바뀌었음을 표시합니다.</summary>
-        /// <param name="asset">대상 에셋입니다.</param>
+        /// <summary>Marks the asset as changed.</summary>
+        /// <param name="asset">Target asset.</param>
         void MarkDirty(UnityEngine.Object asset);
 
         /// <summary>
-        /// 방금 만든 에셋이면 값을 곧바로 씁니다.
-        /// 지워진 경로에 다시 만들면 재임포트가 끼어들어 메모리에만 있던 수정이 버려지기 때문입니다.
+        /// Writes the values out at once when the asset was just created.
+        /// Recreating one at a deleted path lets a reimport cut in and throw away edits that lived only in memory.
         /// </summary>
-        /// <param name="asset">방금 굽고 더럽힌 에셋입니다.</param>
-        /// <param name="created">이번에 새로 만든 것인지 여부입니다.</param>
+        /// <param name="asset">Asset just baked and dirtied.</param>
+        /// <param name="created">Whether it was newly created this time.</param>
         void FlushIfCreated(UnityEngine.Object asset, bool created);
 
-        /// <summary>에셋을 지웁니다.</summary>
-        /// <param name="path">지울 경로입니다.</param>
+        /// <summary>Deletes an asset.</summary>
+        /// <param name="path">Path to delete.</param>
         void Delete(string path);
 
-        /// <summary>더럽혀진 에셋을 모두 저장합니다.</summary>
+        /// <summary>Saves every dirtied asset.</summary>
         void SaveAll();
 
         /// <summary>
-        /// 후보 중 <b>다른 곳에서 참조 중인 것</b>을 가려냅니다.
-        /// 참조가 남은 에셋을 지우면 GUID가 사라져 git으로도 배선이 돌아오지 않습니다.
-        /// <b><see cref="ReferenceScanBlocked"/>가 null이 아니면 이 결과를 믿어서는 안 됩니다.</b>
+        /// <b>Defers the store's reimport</b> while several assets are created or changed. Dropping the return value releases it.
+        /// <para>
+        /// Without this the asset pipeline runs once per row. Baking a 3,000-row table spends on the order of
+        /// 100ms filling in values, while that surrounding ceremony spends two minutes — fixing a single cell
+        /// and saving costs the same. Baking that breaks the editing flow removes the reason to author in
+        /// tables at all, so this stays a contract the skeleton keeps.
+        /// </para>
+        /// <para>
+        /// <b>It nests.</b> Rebuilding all tables opens a scope on the outside and then opens one again per
+        /// table, so if the store were released first when the inner scope closes, it would go back to running
+        /// once per row from there on. An implementation that holds nothing can return a handle that does nothing.
+        /// </para>
         /// </summary>
-        /// <param name="candidates">조사할 에셋 경로들입니다.</param>
-        /// <returns>참조가 발견된 경로들입니다.</returns>
+        /// <returns>Handle that closes the scope.</returns>
+        IDisposable BatchEdits();
+
+        /// <summary>
+        /// Picks out the candidates that <b>something else still references</b>.
+        /// Deleting an asset that is still referenced loses its GUID, and not even git brings the wiring back.
+        /// <b>Do not trust this result when <see cref="ReferenceScanBlocked"/> is not null.</b>
+        /// </summary>
+        /// <param name="candidates">Asset paths to scan.</param>
+        /// <returns>The paths where a reference was found.</returns>
         HashSet<string> FindReferenced(IReadOnlyList<string> candidates);
 
         /// <summary>
-        /// 참조 조사를 믿을 수 없으면 그 이유입니다. 믿을 수 있으면 null입니다.
+        /// Why the reference scan cannot be trusted. Null when it can.
         /// <para>
-        /// 조사가 <b>틀린 답을 자신 있게 내놓는</b> 상황이 있습니다. 그때 "참조 없음"을 그대로 받으면
-        /// 씬이 쓰고 있는 에셋을 경고 없이 지우게 되고, GUID가 사라져 git으로도 되돌릴 수 없습니다.
-        /// 그래서 <b>조사할 수 없다는 사실 자체</b>를 값으로 돌려주고, 그럴 때는 아무것도 지우지 않습니다.
+        /// There are situations where the scan <b>confidently gives a wrong answer</b>. Taking "no references"
+        /// at face value then deletes an asset a scene is using without warning, and the GUID is gone, so git
+        /// cannot undo it either. So <b>the fact that it cannot scan</b> comes back as a value, and nothing is
+        /// deleted while it holds.
         /// </para>
         /// </summary>
         string ReferenceScanBlocked { get; }
 
         /// <summary>
-        /// 들고 있던 것을 버립니다. <b>에셋이 하나라도 바뀌면 불립니다.</b>
+        /// Drops whatever is held. <b>Called whenever any asset changes.</b>
         /// <para>
-        /// 참조 조사는 프로젝트 전체를 묻는 일이라 결과를 들고 있는 편이 낫습니다. 그러면
-        /// 낡을 수 있고, 낡은 답은 <b>있는 참조를 못 보고 지우는</b> 쪽으로 틀릴 수 있습니다.
-        /// 그래서 버릴 길을 계약에 둡니다. 들고 있는 것이 없는 구현은 아무것도 하지 않으면 됩니다.
+        /// A reference scan asks about the whole project, so holding on to the result is worth it. That result
+        /// can then go stale, and a stale answer can be wrong in the direction of <b>missing a live reference
+        /// and deleting</b>. So the contract carries a way to drop it. An implementation that holds nothing can do nothing.
         /// </para>
         /// </summary>
         void InvalidateCaches();

@@ -2,18 +2,20 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using UnityEditor;
+using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace CsvPipeline
 {
     /// <summary>
-    /// 실제 Unity AssetDatabase에 닿는 구현입니다. 파이프라인에서 <b>Unity에 매인 코드는 여기에만</b> 있습니다.
+    /// The implementation that touches the real Unity AssetDatabase. In the pipeline, <b>Unity-bound code lives only here</b>.
     /// </summary>
     public sealed class UnityAssetGateway : ICsvAssetGateway
     {
-        /// <summary>지정한 이름의 표 파일 경로를 찾습니다.</summary>
-        /// <param name="fileName">찾을 파일 이름입니다.</param>
-        /// <returns>찾은 경로이거나 null입니다.</returns>
+        /// <summary>Finds the path of the table file with the given name.</summary>
+        /// <param name="fileName">File name to find.</param>
+        /// <returns>The path found, or null.</returns>
         public string FindTablePath(string fileName)
         {
             if (string.IsNullOrEmpty(fileName)) return null;
@@ -28,26 +30,53 @@ namespace CsvPipeline
             return found;
         }
 
-        /// <summary>표 파일을 실제로 찾습니다. 들고 있는 것이 없을 때만 불립니다.</summary>
-        /// <param name="fileName">찾을 파일 이름입니다.</param>
-        /// <returns>찾은 경로이거나 null입니다.</returns>
+        /// <summary>Actually searches for the table file. Called only when nothing is held in the cache.</summary>
+        /// <param name="fileName">File name to find.</param>
+        /// <returns>The path found, or null.</returns>
         private static string SearchTablePath(string fileName)
         {
             string nameNoExt = Path.GetFileNameWithoutExtension(fileName);
+
+            var matches = new List<string>();
             foreach (string guid in AssetDatabase.FindAssets($"{nameNoExt} t:TextAsset"))
             {
                 string path = AssetDatabase.GUIDToAssetPath(guid);
-                if (Path.GetFileName(path).Equals(fileName, StringComparison.OrdinalIgnoreCase)) return path;
+                if (Path.GetFileName(path).Equals(fileName, StringComparison.OrdinalIgnoreCase)) matches.Add(path);
             }
 
-            // Unity는 .tsv 를 TextAsset으로 임포트하지 않아 위 검색에 걸리지 않습니다.
-            // 설정된 CSV 루트 안을 직접 훑어 폴백합니다.
-            return FindOnDisk(fileName);
+            if (matches.Count == 0)
+            {
+                // Unity는 .tsv 를 TextAsset으로 임포트하지 않아 위 검색에 걸리지 않습니다.
+                // 설정된 CSV 루트 안을 직접 훑어 폴백합니다.
+                return FindOnDisk(fileName);
+            }
+
+            // 하나뿐이면 물어볼 것이 없습니다.
+            if (matches.Count == 1) return matches[0];
+
+            // 둘 이상이면 어느 것을 굽는지가 FindAssets의 검색 순서로 정해지고, 그 순서는 보장되지
+            // 않습니다. 같은 표를 다시 구우면 다른 파일을 읽을 수 있고 아무 말도 남지 않았습니다.
+            // 산출물 폴더를 적지 않은 선언은 이 경로를 기준으로 폴더까지 정하므로, 고른 것이 바뀌면
+            // 구워지는 자리도 함께 옮겨 갑니다. 샘플을 새 판으로 다시 가져오면 바로 이 상태가 됩니다.
+            //
+            // 참조 에셋 이름이 겹칠 때와 달리 여기서는 <b>고르지 않을 수가 없습니다</b> — 아무것도
+            // 굽지 않으면 사람에게 남는 길이 없습니다. 그래서 순서에 맡기는 대신 경로순으로 못박고,
+            // 무엇을 골랐고 무엇이 더 있는지 전부 적어 알립니다.
+            matches.Sort(StringComparer.Ordinal);
+
+            Debug.LogWarning(
+                $"[CsvPipeline] There are {matches.Count} tables named '{fileName}'. Using the first one in path order.\n"
+                + $"  Using → {matches[0]}\n"
+                + string.Join("\n", matches.GetRange(1, matches.Count - 1).ConvertAll(p => $"  Other → {p}"))
+                + "\n  Delete one of them or rename it. If [CsvAsset] does not state an OutputFolder,"
+                + " the output assets sit next to the table that was picked, so which one is picked also moves where they are baked.");
+
+            return matches[0];
         }
 
-        /// <summary>설정된 CSV 루트 폴더 안에서 파일을 직접 찾습니다.</summary>
-        /// <param name="fileName">찾을 파일 이름입니다.</param>
-        /// <returns>프로젝트 상대 경로이거나 null입니다.</returns>
+        /// <summary>Searches the configured CSV root folder for the file directly.</summary>
+        /// <param name="fileName">File name to find.</param>
+        /// <returns>A project-relative path, or null.</returns>
         private static string FindOnDisk(string fileName)
         {
             string root = CsvPipelineSettings.Instance.CsvRootFolder;
@@ -67,35 +96,63 @@ namespace CsvPipeline
             return null;
         }
 
-        /// <summary>표 파일의 원문을 읽습니다. TextAsset이 아니면 디스크에서 직접 읽습니다.</summary>
-        /// <param name="path">읽을 경로입니다.</param>
-        /// <returns>원문이거나 null입니다.</returns>
-        public string ReadText(string path)
+        /// <summary>Reads the raw text of a table file.</summary>
+        /// <param name="path">Path to read.</param>
+        /// <returns>The raw text, or null.</returns>
+        public string ReadText(string path) => ReadText(path, out _);
+
+        /// <summary>
+        /// Reads the raw text of a table file, and reports the reason when it cannot be read.
+        /// <para>
+        /// <b>Reads the bytes from disk first.</b> <see cref="TextAsset"/> always interprets content as
+        /// UTF-8, so it returns a table saved in CP949 or UTF-16 as <b>mojibake, silently</b>.
+        /// Baking in that state puts the broken values into the assets, and the next export writes them
+        /// back to the table, overwriting the source as well. Looking at the bytes directly lets
+        /// <see cref="CsvText"/> stop right there.
+        /// </para>
+        /// <para>
+        /// Only when the read from disk fails does it fall back to <see cref="TextAsset"/>. That covers
+        /// assets that exist only in memory, and running on top of a virtual file system.
+        /// </para>
+        /// </summary>
+        /// <param name="path">Path to read.</param>
+        /// <param name="problem">Receives the reason the read failed.</param>
+        /// <returns>The raw text, or null.</returns>
+        public string ReadText(string path, out string problem)
         {
+            problem = null;
             if (string.IsNullOrEmpty(path)) return null;
 
-            TextAsset asset = AssetDatabase.LoadAssetAtPath<TextAsset>(path);
-            if (asset != null) return asset.text;
-
+            byte[] bytes = null;
             try
             {
                 string full = Path.GetFullPath(path);
-                return File.Exists(full) ? File.ReadAllText(full) : null;
+                if (File.Exists(full)) bytes = File.ReadAllBytes(full);
             }
-            catch (IOException)
+            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
             {
+                problem = $"Could not open the file: {e.Message}";
                 return null;
             }
+
+            if (bytes != null)
+            {
+                if (CsvText.TryDecode(bytes, out string text, out problem)) return text;
+                return null;
+            }
+
+            TextAsset asset = AssetDatabase.LoadAssetAtPath<TextAsset>(path);
+            return asset != null ? asset.text : null;
         }
 
-        /// <summary>폴더가 있는지 여부입니다.</summary>
-        /// <param name="folder">확인할 폴더입니다.</param>
-        /// <returns>있으면 true입니다.</returns>
+        /// <summary>Whether the folder exists.</summary>
+        /// <param name="folder">Folder to check.</param>
+        /// <returns>True if it exists.</returns>
         public bool FolderExists(string folder)
             => !string.IsNullOrEmpty(folder) && AssetDatabase.IsValidFolder(folder);
 
-        /// <summary>없으면 부모부터 순차적으로 폴더를 만듭니다.</summary>
-        /// <param name="folder">보장할 폴더입니다.</param>
+        /// <summary>Creates the folder, and each missing parent before it, when it does not exist.</summary>
+        /// <param name="folder">Folder to ensure.</param>
         public void EnsureFolder(string folder)
         {
             if (string.IsNullOrEmpty(folder) || AssetDatabase.IsValidFolder(folder)) return;
@@ -110,11 +167,11 @@ namespace CsvPipeline
             }
         }
 
-        /// <summary>지정 경로의 에셋을 로드하거나, 없으면 만듭니다.</summary>
-        /// <param name="type">만들 타입입니다.</param>
-        /// <param name="path">에셋 경로입니다.</param>
-        /// <param name="created">새로 만들었으면 true를 받습니다.</param>
-        /// <returns>로드하거나 만든 에셋입니다.</returns>
+        /// <summary>Loads the asset at the given path, or creates it when there is none.</summary>
+        /// <param name="type">Type to create.</param>
+        /// <param name="path">Asset path.</param>
+        /// <param name="created">Receives true when the asset was newly created.</param>
+        /// <returns>The asset that was loaded or created.</returns>
         public ScriptableObject CreateOrLoad(Type type, string path, out bool created)
         {
             var asset = AssetDatabase.LoadAssetAtPath(path, type) as ScriptableObject;
@@ -129,23 +186,23 @@ namespace CsvPipeline
             return asset;
         }
 
-        /// <summary>지정 경로의 에셋을 로드합니다.</summary>
-        /// <param name="path">에셋 경로입니다.</param>
-        /// <param name="type">기대하는 타입입니다.</param>
-        /// <returns>찾은 에셋이거나 null입니다.</returns>
+        /// <summary>Loads the asset at the given path.</summary>
+        /// <param name="path">Asset path.</param>
+        /// <param name="type">Expected type.</param>
+        /// <returns>The asset found, or null.</returns>
         public UnityEngine.Object Load(string path, Type type)
             => string.IsNullOrEmpty(path) ? null : AssetDatabase.LoadAssetAtPath(path, type);
 
-        /// <summary>에셋의 경로입니다.</summary>
-        /// <param name="asset">대상 에셋입니다.</param>
-        /// <returns>경로입니다.</returns>
+        /// <summary>The path of the asset.</summary>
+        /// <param name="asset">Target asset.</param>
+        /// <returns>The path.</returns>
         public string PathOf(UnityEngine.Object asset)
             => asset == null ? string.Empty : AssetDatabase.GetAssetPath(asset);
 
-        /// <summary>타입 필터에 맞는 에셋 경로들을 찾습니다.</summary>
-        /// <param name="typeFilter">검색 필터입니다.</param>
-        /// <param name="folder">검색 범위 폴더입니다. null이면 전체입니다.</param>
-        /// <returns>찾은 경로들입니다.</returns>
+        /// <summary>Finds the asset paths that match the type filter.</summary>
+        /// <param name="typeFilter">Search filter.</param>
+        /// <param name="folder">Folder to search within. Null searches the whole project.</param>
+        /// <returns>The paths found.</returns>
         public IReadOnlyList<string> FindPaths(string typeFilter, string folder = null)
         {
             string[] guids = string.IsNullOrEmpty(folder)
@@ -159,23 +216,30 @@ namespace CsvPipeline
             return paths;
         }
 
-        /// <summary>에셋이 바뀌었음을 표시합니다.</summary>
-        /// <param name="asset">대상 에셋입니다.</param>
+        /// <summary>Marks the asset as changed.</summary>
+        /// <param name="asset">Target asset.</param>
         public void MarkDirty(UnityEngine.Object asset)
         {
             if (asset != null) EditorUtility.SetDirty(asset);
         }
 
-        /// <summary>방금 만든 에셋이면 값을 곧바로 씁니다.</summary>
-        /// <param name="asset">대상 에셋입니다.</param>
-        /// <param name="created">새로 만든 것인지 여부입니다.</param>
+        /// <summary>Writes the values out immediately when the asset was just created.</summary>
+        /// <param name="asset">Target asset.</param>
+        /// <param name="created">Whether the asset was newly created.</param>
         public void FlushIfCreated(UnityEngine.Object asset, bool created)
         {
-            if (created && asset != null) AssetDatabase.SaveAssetIfDirty(asset);
+            if (!created || asset == null) return;
+
+            // 되임포트를 미루는 중이라면 끼어들 재임포트가 없습니다. 그때의 저장은 막으려던 사고를
+            // 막지 못하면서 행마다 에셋 파이프라인을 한 번씩 돌리기만 합니다. 범위가 닫힐 때
+            // 한꺼번에 내려가고, 그 뒤 SaveAll이 다시 훑습니다.
+            if (Batching) return;
+
+            AssetDatabase.SaveAssetIfDirty(asset);
         }
 
-        /// <summary>에셋을 지웁니다.</summary>
-        /// <param name="path">지울 경로입니다.</param>
+        /// <summary>Deletes the asset.</summary>
+        /// <param name="path">Path to delete.</param>
         public void Delete(string path)
         {
             if (string.IsNullOrEmpty(path)) return;
@@ -184,11 +248,57 @@ namespace CsvPipeline
             InvalidateCaches();
         }
 
-        /// <summary>더럽혀진 에셋을 모두 저장합니다.</summary>
+        /// <summary>Saves every dirty asset.</summary>
         public void SaveAll()
         {
             AssetDatabase.SaveAssets();
             InvalidateCaches();
+        }
+
+        /// <summary>Depth of the scopes currently deferring reimport. Zero means nothing is deferred.</summary>
+        private int _batchDepth;
+
+        /// <summary>
+        /// Opens a scope that defers reimport. Nested scopes release only once, when the outermost one closes.
+        /// </summary>
+        /// <returns>A handle that closes the scope.</returns>
+        public IDisposable BatchEdits() => new BatchScope(this);
+
+        /// <summary>Whether reimport is currently deferred.</summary>
+        internal bool Batching => _batchDepth > 0;
+
+        /// <summary>A scope that counts <see cref="AssetDatabase.StartAssetEditing"/> calls to keep them paired.</summary>
+        private sealed class BatchScope : IDisposable
+        {
+            private readonly UnityAssetGateway _owner;
+            private bool _closed;
+
+            /// <summary>Opens the scope, and stops the asset database when this is the outermost one.</summary>
+            /// <param name="owner">The gateway that counts the scopes.</param>
+            public BatchScope(UnityAssetGateway owner)
+            {
+                _owner = owner;
+                if (_owner._batchDepth++ == 0) AssetDatabase.StartAssetEditing();
+            }
+
+            /// <summary>Closes the scope, and releases the asset database when this is the outermost one.</summary>
+            public void Dispose()
+            {
+                if (_closed) return;
+                _closed = true;
+
+                // 짝이 어긋나면 에디터가 임포트를 멈춘 채 잠긴 것처럼 보입니다. 예외 경로에서도
+                // 반드시 내려가도록 finally 안에서 풉니다.
+                try
+                {
+                    if (_owner._batchDepth == 1) AssetDatabase.StopAssetEditing();
+                }
+                finally
+                {
+                    _owner._batchDepth--;
+                    if (_owner._batchDepth == 0) _owner.InvalidateCaches();
+                }
+            }
         }
 
         // ====================================================================================================
@@ -196,30 +306,69 @@ namespace CsvPipeline
         // ====================================================================================================
 
         /// <summary>
-        /// 참조 조사를 믿을 수 없으면 그 이유입니다. <b>이 구현에서는 언제나 null입니다.</b>
+        /// The reason the reference scan cannot be trusted. <b>In this implementation it is always null.</b>
         /// <para>
-        /// 예전에는 씬·프리팹을 <b>글자로 읽어</b> GUID 문자열을 찾았고, 그래서 프로젝트의
-        /// Asset Serialization 이 <c>Force Text</c> 가 아니면 무엇을 물어도 "참조 없음" 이 나왔습니다.
-        /// 지금은 AssetDatabase 가 임포트할 때 만들어 둔 <b>의존성 그래프</b>에 묻습니다.
-        /// 그 그래프는 파일이 글자로 저장됐는지 이진으로 저장됐는지와 무관합니다.
+        /// It used to <b>read scenes and prefabs as text</b> and look for GUID strings, so whenever the
+        /// project's Asset Serialization was not <c>Force Text</c>, every question came back "not referenced".
+        /// It now asks the <b>dependency graph</b> the AssetDatabase builds at import time.
+        /// That graph does not care whether a file was saved as text or as binary.
         /// </para>
         /// <para>
-        /// 그래도 이 자리를 남겨 둡니다. 게이트웨이가 <b>"모른다"고 말할 수 있어야</b> 정리를
-        /// 멈출 수 있고, 그 규칙은 이 구현 하나의 사정이 아니라 계약이기 때문입니다.
+        /// <b>One untrustworthy spot still remains.</b> The dependency graph is built at import time, that is,
+        /// from <b>what is saved on disk</b>. A wiring you just made by hand in an open scene or prefab stage
+        /// and have not saved yet is not in that graph. Running cleanup in that state reports "not referenced"
+        /// and deletes the output asset you just wired up — the accident this tool works hardest to avoid.
+        /// So <b>nothing is deleted while unsaved edits exist.</b>
         /// </para>
         /// </summary>
-        public string ReferenceScanBlocked => null;
+        public string ReferenceScanBlocked
+        {
+            get
+            {
+                if (PrefabStageUtility.GetCurrentPrefabStage() != null)
+                {
+                    return "References cannot be scanned while a prefab is being edited. "
+                         + "Deleting now could miss an output asset that prefab uses, so nothing was deleted.\n"
+                         + "  Finish editing the prefab, save it, and bake again.";
+                }
+
+                string dirty = FirstDirtyScene();
+                if (dirty != null)
+                {
+                    return $"References cannot be scanned because a scene is unsaved: {dirty}\n"
+                         + "  A wiring you just made in a scene is invisible to the scan until the scene is saved. "
+                         + "Deleting now would break that wiring, so nothing was deleted.\n"
+                         + "  Save the scene and bake again, and cleanup continues.";
+                }
+                return null;
+            }
+        }
+
+        /// <summary>The name of the first unsaved scene among the open ones. Null when there is none.</summary>
+        /// <returns>The scene name, or null.</returns>
+        private static string FirstDirtyScene()
+        {
+            for (int i = 0; i < SceneManager.sceneCount; i++)
+            {
+                Scene scene = SceneManager.GetSceneAt(i);
+
+                // 한 번도 저장한 적 없는 빈 씬(경로 없음)은 산출물을 붙잡고 있을 수 없습니다.
+                // 그것까지 막으면 새 프로젝트에서 정리가 영영 돌지 않습니다.
+                if (scene.isDirty && !string.IsNullOrEmpty(scene.path)) return scene.path;
+            }
+            return null;
+        }
 
         /// <summary>
-        /// 후보 중 <b>다른 곳에서 쓰이고 있는 것</b>을 가려냅니다.
+        /// Picks out the candidates that are <b>still used somewhere else</b>.
         /// <para>
-        /// 프로젝트의 씬·프리팹·에셋이 무엇을 쓰는지 AssetDatabase 에 묻고, 그 답 안에 후보가
-        /// 있는지 봅니다. <b>후보끼리의 참조는 세지 않습니다</b> — 함께 사라질 것들이 서로를
-        /// 붙잡아 주면 아무것도 정리되지 않습니다.
+        /// Asks the AssetDatabase what the project's scenes, prefabs, and assets use, then looks for the
+        /// candidates in that answer. <b>References between candidates do not count</b> — if things that are
+        /// about to disappear together hold each other up, nothing ever gets cleaned up.
         /// </para>
         /// </summary>
-        /// <param name="candidates">조사할 에셋 경로들입니다.</param>
-        /// <returns>참조가 발견된 경로들입니다.</returns>
+        /// <param name="candidates">Asset paths to scan.</param>
+        /// <returns>The paths that were found to be referenced.</returns>
         public HashSet<string> FindReferenced(IReadOnlyList<string> candidates)
         {
             var referenced = new HashSet<string>();
@@ -244,11 +393,11 @@ namespace CsvPipeline
         }
 
         /// <summary>
-        /// 프로젝트 설정이 직접 붙잡고 있는 참조를 더합니다.
-        /// 프리로드 목록은 에셋이 아니라 설정에 적혀 있어, 에셋만 훑어서는 보이지 않습니다.
+        /// Adds the references the project settings hold directly.
+        /// The preloaded-assets list lives in the settings rather than in an asset, so scanning assets alone never sees it.
         /// </summary>
-        /// <param name="candidates">조사 중인 후보들입니다.</param>
-        /// <param name="referenced">참조가 발견된 경로들입니다. 여기에 더합니다.</param>
+        /// <param name="candidates">The candidates being scanned.</param>
+        /// <param name="referenced">The paths found to be referenced. Additions go here.</param>
         private static void AddPreloaded(HashSet<string> candidates, HashSet<string> referenced)
         {
             foreach (UnityEngine.Object preloaded in PlayerSettings.GetPreloadedAssets())
@@ -261,13 +410,14 @@ namespace CsvPipeline
         }
 
         /// <summary>
-        /// 에셋마다 <b>무엇을 쓰는지</b>를 모아 둔 것입니다. 없으면 이때 만듭니다.
+        /// What each asset <b>uses</b>, collected in one place. Built here on first use.
         /// <para>
-        /// 표 한 장을 정리할 때마다 프로젝트 전체를 다시 묻는 것이 이 도구의 가장 큰 비용이었습니다.
-        /// 창의 훑기는 표 수만큼 그것을 되풀이합니다. 한 번 모아 두고, <b>에셋이 바뀌면 버립니다.</b>
+        /// Asking the whole project again for every single table that gets cleaned up was this tool's
+        /// largest cost. The window's rescan repeats that once per table. Collect it once, and
+        /// <b>throw it away when an asset changes.</b>
         /// </para>
         /// </summary>
-        /// <returns>홀더 경로 → 그 에셋이 쓰는 경로들입니다.</returns>
+        /// <returns>Holder path → the paths that asset uses.</returns>
         private Dictionary<string, string[]> Dependencies()
         {
             if (_dependencies != null) return _dependencies;
@@ -285,37 +435,130 @@ namespace CsvPipeline
             return map;
         }
 
-        /// <summary>참조를 담을 수 있는 에셋인지 봅니다. (씬·프리팹·에셋)</summary>
-        /// <param name="path">볼 경로입니다.</param>
-        /// <returns>담을 수 있으면 true입니다.</returns>
+        /// <summary>
+        /// Checks whether an asset can hold references.
+        /// <para>
+        /// <b>It does not count what can hold them; it excludes only what cannot.</b> It used to count just
+        /// three kinds — scenes, prefabs, and <c>.asset</c> — and whenever an extension missing from that list
+        /// held an output asset, the scan reported "not referenced" and the asset <b>was deleted.</b> Timeline
+        /// (<c>.playable</c>), presets (<c>.preset</c>), and animators are exactly such places.
+        /// Growing the list means the same accident returns every time Unity adds one more extension.
+        /// </para>
+        /// <para>
+        /// Erring on the side of excluding costs a little more time; erring on the side of counting loses data.
+        /// So it excludes only <b>what can be trusted not to hold references</b> (images, audio, video, models,
+        /// fonts, scripts, plain text, shaders). Most of a project's bulk is here, so most of the cost goes with it.
+        /// </para>
+        /// </summary>
+        /// <param name="path">Path to check.</param>
+        /// <returns>True if it can hold references.</returns>
         private static bool CanHoldReferences(string path)
         {
-            // 패키지 안의 에셋은 소비 프로젝트가 굽는 산출물을 참조하지 않습니다.
-            if (!path.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase)) return false;
+            if (CannotHoldReferences(path)) return false;
 
-            return path.EndsWith(".unity", StringComparison.OrdinalIgnoreCase)
-                || path.EndsWith(".prefab", StringComparison.OrdinalIgnoreCase)
-                || path.EndsWith(".asset", StringComparison.OrdinalIgnoreCase);
+            if (path.StartsWith("Assets/", StringComparison.OrdinalIgnoreCase)) return true;
+
+            // 패키지도 봐야 합니다. 규모 있는 프로젝트는 자기 코드를 임베디드 패키지로 갈라 두고,
+            // 그 안의 프리팹이 소비 프로젝트의 산출물을 참조합니다. 레지스트리에서 받은 패키지는
+            // 읽기 전용이라 그럴 수 없으므로 그것만 뺍니다.
+            return path.StartsWith("Packages/", StringComparison.OrdinalIgnoreCase) && IsMutablePackage(path);
+        }
+
+        /// <summary>
+        /// Checks whether a file can never hold an object reference under any circumstances.
+        /// <b>When you add an extension here, confirm that it truly cannot hold one.</b> Add a wrong one and
+        /// the output assets that file was holding get deleted silently.
+        /// </summary>
+        /// <param name="path">Path to check.</param>
+        /// <returns>True if it cannot hold references.</returns>
+        private static bool CannotHoldReferences(string path)
+        {
+            string extension = Path.GetExtension(path);
+            if (string.IsNullOrEmpty(extension)) return true;   // 폴더입니다.
+
+            return Array.IndexOf(ReferencelessExtensions, extension.ToLowerInvariant()) >= 0;
+        }
+
+        /// <summary>
+        /// The extensions that cannot hold object references. Most of a project's files fall in here.
+        /// <para>
+        /// <b>Left open so tests can see it.</b> This list is the heart of the deletion safeguard, and if a single
+        /// extension that can hold references slips in, the output assets that file was holding get deleted
+        /// silently. And that accident <b>is caught by no test at all</b> — with no way to read the list, there is
+        /// no way to pin it down.
+        /// </para>
+        /// </summary>
+        internal static readonly string[] ReferencelessExtensions =
+        {
+            // 코드·정의
+            ".cs", ".js", ".dll", ".asmdef", ".asmref", ".rsp", ".xaml",
+            // 그림
+            ".png", ".jpg", ".jpeg", ".tga", ".psd", ".psb", ".tif", ".tiff", ".exr", ".hdr",
+            ".gif", ".bmp", ".svg", ".webp", ".ico", ".dds", ".pict",
+            // 소리·영상
+            ".wav", ".mp3", ".ogg", ".aiff", ".aif", ".flac", ".mod", ".it", ".s3m", ".xm",
+            ".mp4", ".mov", ".webm", ".avi", ".m4v",
+            // 모델·글꼴
+            ".fbx", ".obj", ".blend", ".dae", ".3ds", ".max", ".ma", ".mb", ".c4d",
+            ".ttf", ".otf", ".fon", ".dfont",
+            // 순수 텍스트
+            ".txt", ".json", ".xml", ".csv", ".tsv", ".tab", ".md", ".yaml", ".yml", ".html", ".htm",
+            // 셰이더
+            ".shader", ".cginc", ".hlsl", ".glslinc", ".compute", ".raytrace",
+            ".shadergraph", ".shadersubgraph",
+        };
+
+        /// <summary>Package name → whether that package is editable inside this project.</summary>
+        private static Dictionary<string, bool> _mutablePackages;
+
+        /// <summary>
+        /// Checks whether the package this path belongs to is edited alongside the project. (embedded or local)
+        /// Asks once per package and holds the answer — asking per path turns into thousands of calls in a single scan.
+        /// </summary>
+        /// <param name="path">Asset path inside a package.</param>
+        /// <returns>True if the package is editable.</returns>
+        private static bool IsMutablePackage(string path)
+        {
+            int nameStart = "Packages/".Length;
+            int nameEnd = path.IndexOf('/', nameStart);
+            if (nameEnd < 0) return false;
+
+            string name = path.Substring(nameStart, nameEnd - nameStart);
+
+            if (_mutablePackages == null) _mutablePackages = new Dictionary<string, bool>(StringComparer.Ordinal);
+            if (_mutablePackages.TryGetValue(name, out bool mutable)) return mutable;
+
+            UnityEditor.PackageManager.PackageInfo info =
+                UnityEditor.PackageManager.PackageInfo.FindForAssetPath(path);
+
+            mutable = info != null
+                   && (info.source == UnityEditor.PackageManager.PackageSource.Embedded
+                    || info.source == UnityEditor.PackageManager.PackageSource.Local);
+
+            _mutablePackages[name] = mutable;
+            return mutable;
         }
 
         // ====================================================================================================
         // 들고 있는 것
         // ====================================================================================================
 
-        /// <summary>에셋마다 무엇을 쓰는지입니다. null이면 아직 모으지 않았거나 버린 것입니다.</summary>
+        /// <summary>What each asset uses. Null means it has not been collected yet, or was thrown away.</summary>
         private Dictionary<string, string[]> _dependencies;
 
-        /// <summary>표 파일 이름 → 경로입니다. 찾지 못한 것은 null로 기억합니다.</summary>
+        /// <summary>Table file name → path. A name that was not found is remembered as null.</summary>
         private Dictionary<string, string> _tablePaths;
 
         /// <summary>
-        /// 들고 있던 것을 버립니다. <b>에셋이 하나라도 바뀌면 불려야 합니다.</b>
-        /// 낡은 채로 두면 이미 사라진 참조를 근거로 지우지 않거나, 새로 생긴 참조를 못 보고 지웁니다.
+        /// Throws away what is held. <b>Must be called whenever any asset changes.</b>
+        /// Left stale, it either keeps an asset alive on the strength of a reference that is already gone, or
+        /// misses a newly created reference and deletes the asset.
         /// </summary>
         public void InvalidateCaches()
         {
             _dependencies = null;
             _tablePaths = null;
+            _mutablePackages = null;
         }
     }
 }

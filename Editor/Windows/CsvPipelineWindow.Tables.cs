@@ -6,30 +6,30 @@ using UnityEngine;
 
 namespace CsvPipeline
 {
-    /// <summary>표 갈래입니다. 표마다 지금 구우면 무엇이 달라지는지를 보여 줍니다.</summary>
+    /// <summary>The Tables tab. For each table it shows what baking right now would change.</summary>
     public sealed partial class CsvPipelineWindow
     {
-        /// <summary>표 하나에 대해 창이 들고 있는 것입니다.</summary>
+        /// <summary>What the window holds for a single table.</summary>
         private sealed class Entry
         {
-            /// <summary>이 표를 굽는 임포터입니다.</summary>
+            /// <summary>The importer that bakes this table.</summary>
             public CsvImportDefinition Definition;
 
-            /// <summary>지금 구우면 무엇이 달라지는지입니다.</summary>
+            /// <summary>What baking right now would change.</summary>
             public CsvImportPlan Plan;
 
-            /// <summary>원본 표의 경로입니다. 찾지 못했으면 null입니다.</summary>
+            /// <summary>Path to the source table. Null when it was not found.</summary>
             public string CsvPath;
         }
 
-        /// <summary>진행 막대를 띄우기 시작하는 표 개수입니다. 몇 장뿐이면 막대가 깜빡이기만 합니다.</summary>
+        /// <summary>Table count at which the progress bar starts showing. With only a few, the bar just flickers.</summary>
         private const int ProgressThreshold = 12;
 
         private readonly List<Entry> _entries = new List<Entry>();
 
         /// <summary>
-        /// 지금 화면에 걸리는 항목들입니다. <b>매 그리기마다 새로 만들지 않습니다</b> —
-        /// 그리기는 마우스가 움직이는 동안에도 계속 돌기 때문입니다.
+        /// The entries currently matching on screen. <b>This is not rebuilt on every draw</b> —
+        /// drawing keeps running while the mouse moves.
         /// </summary>
         private readonly List<Entry> _visible = new List<Entry>();
 
@@ -37,27 +37,27 @@ namespace CsvPipeline
         private Vector2 _tableScroll;
         private SearchField _searchField;
 
-        /// <summary>마우스가 올라가 있는 줄입니다. 없으면 -1입니다.</summary>
+        /// <summary>The row the mouse is over. -1 when there is none.</summary>
         private int _hoverIndex = -1;
 
-        /// <summary>고른 줄을 화면 안으로 끌어와야 하는지 여부입니다.</summary>
+        /// <summary>Whether the selected row has to be pulled into view.</summary>
         private bool _scrollToSelection;
 
-        /// <summary>마지막으로 훑은 시각입니다. 지금 보는 것이 언제 것인지 알리는 데 씁니다.</summary>
+        /// <summary>When the last scan ran. Used to tell how old what you are looking at is.</summary>
         private string ScannedAt
         {
             get => SessionState.GetString(StateKey + "ScannedAt", string.Empty);
             set => SessionState.SetString(StateKey + "ScannedAt", value ?? string.Empty);
         }
 
-        /// <summary>검색어입니다. 도메인이 다시 실려도 남습니다.</summary>
+        /// <summary>The search text. It survives a domain reload.</summary>
         private string Search
         {
             get => SessionState.GetString(StateKey + "Search", string.Empty);
             set => SessionState.SetString(StateKey + "Search", value ?? string.Empty);
         }
 
-        /// <summary>지금 고른 보기입니다.</summary>
+        /// <summary>The view currently selected.</summary>
         private CsvTableView View
         {
             get => (CsvTableView)SessionState.GetInt(StateKey + "View", (int)CsvTableView.Changed);
@@ -65,9 +65,9 @@ namespace CsvPipeline
         }
 
         /// <summary>
-        /// 키보드로 고른 표의 파일 이름입니다.
-        /// <b>자리(번호)가 아니라 이름으로 들고 있습니다.</b> 거르기나 훑기로 목록이 바뀌어도
-        /// 골라 둔 것이 엉뚱한 표로 옮겨 가지 않게 하려는 것입니다.
+        /// File name of the table selected with the keyboard.
+        /// <b>It is held by name, not by position.</b> That way, when filtering or a rescan reorders the
+        /// list, the selection does not jump to some other table.
         /// </summary>
         private string SelectedFile
         {
@@ -75,15 +75,15 @@ namespace CsvPipeline
             set => SessionState.SetString(StateKey + "Selected", value ?? string.Empty);
         }
 
-        /// <summary>표 하나가 펼쳐져 있는지 여부입니다.</summary>
-        /// <param name="fileName">표 파일 이름입니다.</param>
-        /// <returns>펼쳐져 있으면 true입니다.</returns>
+        /// <summary>Whether one table is expanded.</summary>
+        /// <param name="fileName">Table file name.</param>
+        /// <returns>True when it is expanded.</returns>
         private static bool IsExpanded(string fileName)
             => SessionState.GetBool(StateKey + "Open." + fileName, false);
 
-        /// <summary>표 하나의 펼침을 정합니다.</summary>
-        /// <param name="fileName">표 파일 이름입니다.</param>
-        /// <param name="open">펼칠지 여부입니다.</param>
+        /// <summary>Sets whether one table is expanded.</summary>
+        /// <param name="fileName">Table file name.</param>
+        /// <param name="open">Whether to expand it.</param>
         private static void SetExpanded(string fileName, bool open)
             => SessionState.SetBool(StateKey + "Open." + fileName, open);
 
@@ -92,11 +92,12 @@ namespace CsvPipeline
         // ====================================================================================================
 
         /// <summary>
-        /// 등록된 모든 표의 계획을 다시 계산합니다.
+        /// Recomputes the plan for every registered table.
         /// </summary>
         /// <param name="interactive">
-        /// 사람이 눌러서 부른 것인지 여부입니다. 그릴 때 저절로 부르는 첫 훑기에서는 <b>진행 막대를 띄우지
-        /// 않습니다.</b> OnGUI 한가운데에서 막대를 띄우면 Layout 과 Repaint 가 서로 다른 것을 그리게 됩니다.
+        /// Whether a person triggered this. The first scan, which the draw pass calls on its own,
+        /// <b>shows no progress bar.</b> Raising a bar in the middle of OnGUI makes Layout and Repaint
+        /// draw different things.
         /// </param>
         private void Rescan(bool interactive = true)
         {
@@ -114,7 +115,7 @@ namespace CsvPipeline
                 {
                     if (showProgress)
                     {
-                        EditorUtility.DisplayProgressBar("CSV 파이프라인", "표를 훑는 중…",
+                        EditorUtility.DisplayProgressBar("CSV Pipeline", "Scanning tables…",
                                                          (float)i / Mathf.Max(1, definitions.Count));
                     }
 
@@ -137,11 +138,12 @@ namespace CsvPipeline
         }
 
         /// <summary>
-        /// 손볼 것이 있는 표를 위로 올립니다. 이름순으로만 늘어놓으면 정작 볼 것이 아래에 묻힙니다.
+        /// Lifts tables that need attention to the top. Sorted by name alone, the ones worth looking at
+        /// end up buried at the bottom.
         /// </summary>
-        /// <param name="a">비교할 항목입니다.</param>
-        /// <param name="b">비교할 항목입니다.</param>
-        /// <returns>정렬 순서입니다.</returns>
+        /// <param name="a">Entry to compare.</param>
+        /// <param name="b">Entry to compare.</param>
+        /// <returns>Sort order.</returns>
         private static int CompareEntries(Entry a, Entry b)
         {
             int byState = CsvPlanStatus.Of(a.Plan).CompareTo(CsvPlanStatus.Of(b.Plan));
@@ -150,26 +152,26 @@ namespace CsvPipeline
             return string.CompareOrdinal(a.Plan.FileName, b.Plan.FileName);
         }
 
-        /// <summary>상태를 아이콘과 설명으로 옮깁니다.</summary>
-        /// <param name="state">옮길 상태입니다.</param>
-        /// <returns>줄 앞에 그릴 내용입니다.</returns>
+        /// <summary>Turns a state into an icon and a description.</summary>
+        /// <param name="state">State to turn.</param>
+        /// <returns>What to draw at the start of the row.</returns>
         private static GUIContent StateIcon(CsvPlanState state)
         {
             switch (state)
             {
-                case CsvPlanState.Problem: return CsvEditorUI.IconOr("console.erroricon.sml", "!", "문제가 있습니다");
-                case CsvPlanState.Blocked: return CsvEditorUI.IconOr("console.warnicon.sml", "?", "계획을 세우지 못했습니다");
-                case CsvPlanState.Removing: return CsvEditorUI.IconOr("console.warnicon.sml", "−", "사라지는 산출물이 있습니다");
-                case CsvPlanState.Changed: return CsvEditorUI.IconOr("d_Refresh", "~", "바뀌는 것이 있습니다");
-                default: return CsvEditorUI.IconOr("TestPassed", "·", "표와 산출물이 같습니다");
+                case CsvPlanState.Problem: return CsvEditorUI.IconOr("console.erroricon.sml", "!", "Has problems");
+                case CsvPlanState.Blocked: return CsvEditorUI.IconOr("console.warnicon.sml", "?", "Could not build a plan");
+                case CsvPlanState.Removing: return CsvEditorUI.IconOr("console.warnicon.sml", "−", "Some output assets go away");
+                case CsvPlanState.Changed: return CsvEditorUI.IconOr("d_Refresh", "~", "Something changes");
+                default: return CsvEditorUI.IconOr("TestPassed", "·", "Table and output assets match");
             }
         }
 
-        /// <summary>상태 바에 쓸 표 갈래 요약입니다.</summary>
-        /// <returns>요약 문자열입니다.</returns>
+        /// <summary>The Tables tab summary for the status bar.</summary>
+        /// <returns>Summary text.</returns>
         private string TablesStatus()
         {
-            if (!_scanned) return "훑는 중…";
+            if (!_scanned) return "Scanning…";
 
             int changed = 0, problems = 0;
             foreach (Entry entry in _entries)
@@ -180,19 +182,19 @@ namespace CsvPipeline
             }
 
             string text = problems > 0
-                ? $"표 {_entries.Count} · 바뀜 {changed} · 문제 {problems}"
-                : $"표 {_entries.Count} · 바뀜 {changed}";
+                ? $"{_entries.Count} tables · {changed} changed · {problems} problems"
+                : $"{_entries.Count} tables · {changed} changed";
 
             // 지금 보는 것이 언제 것인지 모르면, 밖에서 표를 고친 뒤에도 낡은 화면을 믿게 됩니다.
             string at = ScannedAt;
-            return string.IsNullOrEmpty(at) ? text : $"{text}   ·   {at} 기준";
+            return string.IsNullOrEmpty(at) ? text : $"{text}   ·   as of {at}";
         }
 
         // ====================================================================================================
         // 그리기
         // ====================================================================================================
 
-        /// <summary>표 갈래를 그립니다.</summary>
+        /// <summary>Draws the Tables tab.</summary>
         private void DrawTables()
         {
             if (!_scanned) Rescan(interactive: false);
@@ -229,7 +231,7 @@ namespace CsvPipeline
             }
         }
 
-        /// <summary>지금 걸리는 항목만 모읍니다.</summary>
+        /// <summary>Collects only the entries that match right now.</summary>
         private void CollectVisible()
         {
             _visible.Clear();
@@ -243,7 +245,7 @@ namespace CsvPipeline
             }
         }
 
-        /// <summary>표 갈래의 도구 줄입니다. 왼쪽은 보기, 오른쪽은 전체에 미치는 행동입니다.</summary>
+        /// <summary>The Tables tab toolbar. Views on the left, actions that affect everything on the right.</summary>
         private void DrawTableToolbar()
         {
             if (_searchField == null)
@@ -257,7 +259,7 @@ namespace CsvPipeline
             using (new EditorGUILayout.HorizontalScope(EditorStyles.toolbar))
             {
                 if (GUILayout.Button(
-                        CsvEditorUI.IconAnd("d_Refresh", " 다시 훑기", "표를 모두 다시 읽어 계획을 새로 세웁니다"),
+                        CsvEditorUI.IconAnd("d_Refresh", " Rescan", "Reads every table again and rebuilds the plans"),
                         EditorStyles.toolbarButton, GUILayout.Width(86)))
                 {
                     Rescan();
@@ -279,7 +281,7 @@ namespace CsvPipeline
                 GUILayout.FlexibleSpace();
 
                 // 표를 통째로 다시 굽거나 내보내는 것은 되돌릴 수 없어, 자주 쓰는 단추 옆에 두지 않습니다.
-                if (GUILayout.Button(CsvEditorUI.IconOr("_Popup", "⋯", "펼치기·전체 다시 굽기·내보내기"),
+                if (GUILayout.Button(CsvEditorUI.IconOr("_Popup", "⋯", "Expand · Rebuild all · Export"),
                                      EditorStyles.toolbarButton, GUILayout.Width(28)))
                 {
                     ShowTableActionsMenu();
@@ -287,7 +289,7 @@ namespace CsvPipeline
             }
         }
 
-        /// <summary>무엇을 보여 줄지 고르는 내림 단추입니다.</summary>
+        /// <summary>The dropdown that selects what to show.</summary>
         private void DrawViewDropdown()
         {
             CsvTableView current = View;
@@ -309,23 +311,23 @@ namespace CsvPipeline
             menu.DropDown(rect);
         }
 
-        /// <summary>전체에 미치는 행동들입니다. 되돌릴 수 없는 것은 한 번 더 묻습니다.</summary>
+        /// <summary>Actions that affect everything. The ones that cannot be undone ask once more.</summary>
         private void ShowTableActionsMenu()
         {
             var menu = new GenericMenu();
 
-            menu.AddItem(new GUIContent("모두 펼치기"), false, () => SetAllExpanded(true));
-            menu.AddItem(new GUIContent("모두 접기"), false, () => SetAllExpanded(false));
+            menu.AddItem(new GUIContent("Expand All"), false, () => SetAllExpanded(true));
+            menu.AddItem(new GUIContent("Collapse All"), false, () => SetAllExpanded(false));
             menu.AddSeparator(string.Empty);
 
-            menu.AddItem(new GUIContent("전체 다시 굽기"), false, () =>
+            menu.AddItem(new GUIContent("Rebuild All Tables"), false, () =>
             {
                 if (!EditorUtility.DisplayDialog(
-                        "전체 다시 굽기",
-                        $"등록된 표 {_entries.Count}장을 모두 다시 굽습니다.\n\n"
-                        + "표에서 사라진 산출물은 참조가 없으면 삭제됩니다.\n"
-                        + "이 작업은 Ctrl+Z 로 되돌릴 수 없습니다.",
-                        "굽기", "취소"))
+                        "Rebuild All Tables",
+                        $"Rebakes all {_entries.Count} registered tables.\n\n"
+                        + "Output assets whose rows are gone from the table are deleted when nothing still references them.\n"
+                        + "This cannot be undone with Ctrl+Z.",
+                        "Bake", "Cancel"))
                 {
                     return;
                 }
@@ -334,14 +336,14 @@ namespace CsvPipeline
                 Rescan();
             });
 
-            menu.AddItem(new GUIContent("에셋을 표로 내보내기"), false, () =>
+            menu.AddItem(new GUIContent("Export Assets to Tables"), false, () =>
             {
                 if (!EditorUtility.DisplayDialog(
-                        "에셋을 표로 내보내기",
-                        "산출물 에셋의 지금 값으로 원본 표 파일을 덮어씁니다.\n\n"
-                        + "표 쪽에만 있던 수정은 사라집니다. 시트 연동을 켠 표라면\n"
-                        + "시트와 어긋나게 되므로 먼저 '전부 비교만'으로 확인하십시오.",
-                        "내보내기", "취소"))
+                        "Export Assets to Tables",
+                        "Overwrites the source table files with the current values of the output assets.\n\n"
+                        + "Edits made only on the table side are lost. For a table with sheet sync on,\n"
+                        + "this puts it out of step with the sheet, so check with 'Compare All' first.",
+                        "Export", "Cancel"))
                 {
                     return;
                 }
@@ -353,8 +355,8 @@ namespace CsvPipeline
             menu.ShowAsContext();
         }
 
-        /// <summary>지금 보이는 표를 모두 펼치거나 접습니다.</summary>
-        /// <param name="open">펼칠지 여부입니다.</param>
+        /// <summary>Expands or collapses every table currently visible.</summary>
+        /// <param name="open">Whether to expand them.</param>
         private void SetAllExpanded(bool open)
         {
             foreach (Entry entry in _visible) SetExpanded(entry.Plan.FileName, open);
@@ -366,11 +368,11 @@ namespace CsvPipeline
         // ====================================================================================================
 
         /// <summary>
-        /// 키 하나를 받아 목록을 움직입니다.
+        /// Takes one key and moves the list.
         /// <para>
-        /// Unity Editor Design System 은 모든 화면이 <b>마우스 없이 키보드만으로</b> 닿을 수 있어야
-        /// 한다고 요구합니다(US-0180). 어느 키가 무슨 뜻인지는 <see cref="CsvListKeys"/>가 정하고,
-        /// 여기서는 그 뜻을 창에 적용하기만 합니다.
+        /// The Unity Editor Design System requires every screen to be reachable <b>with the keyboard
+        /// alone, without a mouse</b> (US-0180). <see cref="CsvListKeys"/> decides what each key means,
+        /// and this method only applies that meaning to the window.
         /// </para>
         /// </summary>
         private void HandleListKeys()
@@ -437,8 +439,8 @@ namespace CsvPipeline
             Repaint();
         }
 
-        /// <summary>고른 표가 지금 목록의 몇 번째인지입니다. 없으면 -1입니다.</summary>
-        /// <returns>자리 번호입니다.</returns>
+        /// <summary>Where the selected table sits in the current list. -1 when there is none.</summary>
+        /// <returns>Index of the row.</returns>
         private int IndexOfSelected()
         {
             string selected = SelectedFile;
@@ -451,8 +453,8 @@ namespace CsvPipeline
             return -1;
         }
 
-        /// <summary>그 자리의 표를 고릅니다.</summary>
-        /// <param name="index">고를 자리입니다.</param>
+        /// <summary>Selects the table at that index.</summary>
+        /// <param name="index">Index to select.</param>
         private void Select(int index)
         {
             if (index < 0 || index >= _visible.Count) return;
@@ -461,14 +463,19 @@ namespace CsvPipeline
             _scrollToSelection = true;
         }
 
-        /// <summary>표 하나를 굽고 목록을 다시 훑습니다.</summary>
-        /// <param name="entry">구울 항목입니다.</param>
+        /// <summary>Bakes one table and rescans the list.</summary>
+        /// <param name="entry">Entry to bake.</param>
         private void BakeOne(Entry entry)
         {
             if (entry.CsvPath == null || entry.Plan.IsNoOp) return;
 
-            entry.Definition.Run(entry.CsvPath);
+            CsvImportReport report = entry.Definition.Run(entry.CsvPath);
             Rescan();
+
+            // 사람이 눌러서 구운 자리입니다. 여기서만 알립니다 — 자동 임포트나 미리보기에서
+            // 같은 알림이 뜨면, 목록을 보는 것만으로 대화상자가 뜹니다.
+            CsvBakeAlert.ShowIfNeeded(report);
+
             GUIUtility.ExitGUI();   // 목록이 바뀌었으므로 이번 프레임 그리기를 멈춥니다.
         }
 
@@ -476,7 +483,7 @@ namespace CsvPipeline
         // 거르기
         // ====================================================================================================
 
-        /// <summary>걸리는 표가 없을 때의 안내입니다. 어느 조건이 걸렀는지까지 말합니다.</summary>
+        /// <summary>The message shown when no table matches. It also names which condition filtered them out.</summary>
         private void DrawNothingMatched()
         {
             bool searching = !string.IsNullOrWhiteSpace(Search);
@@ -487,35 +494,35 @@ namespace CsvPipeline
             {
                 // 걸러 낸 조건이 둘일 수 있습니다. 어느 쪽이 범인인지 모르면 사람이 검색어만 의심합니다.
                 (string, Action)[] extras = hiding
-                    ? new (string, Action)[] { ("전부 보기", () => View = CsvTableView.All) }
+                    ? new (string, Action)[] { ("Show Everything", () => View = CsvTableView.All) }
                     : Array.Empty<(string, Action)>();
 
                 CsvEditorUI.EmptyState(
-                    $"'{Search}' 에 걸리는 표가 없습니다",
+                    $"No table matches '{Search}'",
                     hiding
-                        ? $"'{CsvTableFilter.Label(view)}' 로 보고 있어 {CsvTableFilter.Describe(view)}"
-                        : "표 파일 이름·산출물 타입 이름·산출물 폴더로 찾습니다.",
-                    "검색어 지우기", () => Search = string.Empty,
+                        ? $"You are viewing '{CsvTableFilter.Label(view)}'. {CsvTableFilter.Describe(view)}"
+                        : "The search matches table file names, output type names, and output folders.",
+                    "Clear Search", () => Search = string.Empty,
                     extras);
                 return;
             }
 
             CsvEditorUI.EmptyState(
-                view == CsvTableView.Problems ? "손볼 표가 없습니다" : "바뀌는 표가 없습니다",
+                view == CsvTableView.Problems ? "No table needs attention" : "No table changes",
                 view == CsvTableView.Problems
-                    ? "문제가 있거나 계획을 세우지 못한 표가 없습니다."
-                    : "모든 산출물이 표와 일치합니다. 지금 구워도 달라지는 것이 없습니다.",
-                "전부 보기", () => View = CsvTableView.All);
+                    ? "No table has a problem, and none failed to produce a plan."
+                    : "Every output asset matches its table. Baking now would change nothing.",
+                "Show Everything", () => View = CsvTableView.All);
         }
 
         // ====================================================================================================
         // 표 한 장
         // ====================================================================================================
 
-        /// <summary>표 한 장을 그립니다.</summary>
-        /// <param name="entry">그릴 항목입니다.</param>
-        /// <param name="index">화면에 보이는 순번입니다. 바탕을 번갈아 까는 데 씁니다.</param>
-        /// <returns>마우스가 이 줄 위에 있으면 true입니다.</returns>
+        /// <summary>Draws one table.</summary>
+        /// <param name="entry">Entry to draw.</param>
+        /// <param name="index">Position on screen. Used to alternate the row background.</param>
+        /// <returns>True when the mouse is over this row.</returns>
         private bool DrawEntry(Entry entry, int index)
         {
             CsvImportPlan plan = entry.Plan;
@@ -555,13 +562,14 @@ namespace CsvPipeline
         }
 
         /// <summary>
-        /// 표 한 장의 머리 줄입니다. <b>줄 전체가 펼침 단추</b>라 삼각형을 정확히 겨눌 필요가 없습니다.
+        /// The header row of one table. <b>The whole row is the foldout button</b>, so there is no need to
+        /// aim precisely at the triangle.
         /// </summary>
-        /// <param name="entry">그릴 항목입니다.</param>
-        /// <param name="index">화면에 보이는 순번입니다.</param>
-        /// <param name="open">펼쳐져 있는지 여부입니다.</param>
-        /// <param name="clicked">눌렸으면 true를 받습니다.</param>
-        /// <returns>마우스가 이 줄 위에 있으면 true입니다.</returns>
+        /// <param name="entry">Entry to draw.</param>
+        /// <param name="index">Position on screen.</param>
+        /// <param name="open">Whether it is expanded.</param>
+        /// <param name="clicked">Receives true when the row was clicked.</param>
+        /// <returns>True when the mouse is over this row.</returns>
         private bool DrawEntryHeader(Entry entry, int index, bool open, out bool clicked)
         {
             CsvImportPlan plan = entry.Plan;
@@ -606,10 +614,10 @@ namespace CsvPipeline
             return hovered;
         }
 
-        /// <summary>머리 줄 위의 마우스를 다룹니다.</summary>
-        /// <param name="entry">이 줄의 항목입니다.</param>
-        /// <param name="row">줄의 자리입니다.</param>
-        /// <returns>펼침을 뒤집어야 하면 true입니다.</returns>
+        /// <summary>Handles the mouse over a header row.</summary>
+        /// <param name="entry">Entry for this row.</param>
+        /// <param name="row">Rect of the row.</param>
+        /// <returns>True when the expansion has to be toggled.</returns>
         private bool HandleRowMouse(Entry entry, Rect row)
         {
             Event e = Event.current;
@@ -640,41 +648,41 @@ namespace CsvPipeline
             return true;
         }
 
-        /// <summary>줄에서 오른쪽 단추를 눌렀을 때의 차림표입니다.</summary>
-        /// <param name="entry">대상 항목입니다.</param>
+        /// <summary>The menu shown when a row is right-clicked.</summary>
+        /// <param name="entry">Target entry.</param>
         private void ShowEntryMenu(Entry entry)
         {
             var menu = new GenericMenu();
 
-            AddMenuItem(menu, "지금 굽기", entry.CsvPath != null && !entry.Plan.IsNoOp, () => BakeOne(entry));
+            AddMenuItem(menu, "Bake Now", entry.CsvPath != null && !entry.Plan.IsNoOp, () => BakeOne(entry));
             menu.AddSeparator(string.Empty);
-            AddMenuItem(menu, "표 열기", entry.CsvPath != null, () => Ping(entry.CsvPath));
-            AddMenuItem(menu, "산출물 폴더 열기", !string.IsNullOrEmpty(entry.Plan.OutputFolder),
+            AddMenuItem(menu, "Open Table", entry.CsvPath != null, () => Ping(entry.CsvPath));
+            AddMenuItem(menu, "Open Output Folder", !string.IsNullOrEmpty(entry.Plan.OutputFolder),
                         () => Ping(entry.Plan.OutputFolder));
             menu.AddSeparator(string.Empty);
-            AddMenuItem(menu, "표 경로 복사", entry.CsvPath != null,
+            AddMenuItem(menu, "Copy Table Path", entry.CsvPath != null,
                         () => EditorGUIUtility.systemCopyBuffer = entry.CsvPath);
 
             menu.ShowAsContext();
         }
 
         /// <summary>
-        /// 할 수 없는 항목은 <b>감추지 않고 흐리게</b> 둡니다. 감추면 차림표의 모양이 줄마다 달라져,
-        /// 손이 기억한 자리가 매번 어긋납니다.
+        /// Items that cannot be used are <b>greyed out, not hidden</b>. Hiding them changes the shape of
+        /// the menu from row to row, so the spot your hand remembers is somewhere else every time.
         /// </summary>
-        /// <param name="menu">채울 차림표입니다.</param>
-        /// <param name="label">항목 이름입니다.</param>
-        /// <param name="enabled">고를 수 있는지 여부입니다.</param>
-        /// <param name="action">고르면 할 일입니다.</param>
+        /// <param name="menu">Menu to fill.</param>
+        /// <param name="label">Item name.</param>
+        /// <param name="enabled">Whether the item can be chosen.</param>
+        /// <param name="action">What to do when it is chosen.</param>
         private static void AddMenuItem(GenericMenu menu, string label, bool enabled, GenericMenu.MenuFunction action)
         {
             if (enabled) menu.AddItem(new GUIContent(label), false, action);
             else menu.AddDisabledItem(new GUIContent(label));
         }
 
-        /// <summary>상태의 색입니다. 색만으로 뜻을 나르지 않도록 아이콘·낱말과 함께 씁니다.</summary>
-        /// <param name="state">줄의 상태입니다.</param>
-        /// <returns>글자색입니다.</returns>
+        /// <summary>The color for a state. It always comes with an icon and a word, so color alone never carries the meaning.</summary>
+        /// <param name="state">State of the row.</param>
+        /// <returns>Text color.</returns>
         private static Color StateColor(CsvPlanState state)
         {
             switch (state)
@@ -687,8 +695,8 @@ namespace CsvPipeline
             }
         }
 
-        /// <summary>펼친 표에서 할 수 있는 동작들입니다.</summary>
-        /// <param name="entry">대상 항목입니다.</param>
+        /// <summary>The actions available on an expanded table.</summary>
+        /// <param name="entry">Target entry.</param>
         private void DrawEntryActions(Entry entry)
         {
             GUILayout.Space(CsvEditorUI.GapTight);
@@ -701,9 +709,11 @@ namespace CsvPipeline
                 using (new EditorGUI.DisabledScope(!hasCsv))
                 {
                     if (GUILayout.Button(
-                            CsvEditorUI.IconAnd("d_TextAsset Icon", " 표 열기",
-                                                hasCsv ? "원본 표를 프로젝트 창에서 찾습니다"
-                                                       : "원본 표 파일을 찾지 못했습니다. CSV 루트 설정을 확인하십시오"),
+                            CsvEditorUI.IconAnd("d_TextAsset Icon", " Open Table",
+                                                // 표 조회는 프로젝트 전체를 이름으로 찾습니다 — CSV 루트 설정과
+                                                // 무관합니다. 그 설정을 보라고 하면 사람은 멀쩡한 값을 들여다봅니다.
+                                                hasCsv ? "Pings the source table in the Project window"
+                                                       : "No table file with this name exists in the project. Check that the declared file name matches the actual one"),
                             EditorStyles.miniButton, GUILayout.Width(88)))
                     {
                         Ping(entry.CsvPath);
@@ -714,9 +724,9 @@ namespace CsvPipeline
                 using (new EditorGUI.DisabledScope(!hasFolder))
                 {
                     if (GUILayout.Button(
-                            CsvEditorUI.IconAnd("Folder Icon", " 산출물 폴더",
-                                                hasFolder ? "구워진 에셋이 놓이는 폴더를 찾습니다"
-                                                          : "이 임포터는 산출물 폴더를 알려 주지 않습니다"),
+                            CsvEditorUI.IconAnd("Folder Icon", " Output Folder",
+                                                hasFolder ? "Pings the folder the baked assets go into"
+                                                          : "This importer does not report an output folder"),
                             EditorStyles.miniButton, GUILayout.Width(100)))
                     {
                         Ping(entry.Plan.OutputFolder);
@@ -728,11 +738,11 @@ namespace CsvPipeline
                 bool canBake = hasCsv && !entry.Plan.IsNoOp;
                 using (new EditorGUI.DisabledScope(!canBake))
                 {
-                    string why = !hasCsv ? "원본 표 파일을 찾지 못했습니다"
-                               : entry.Plan.IsNoOp ? "지금 구워도 달라지는 것이 없습니다"
-                               : "이 표만 지금 굽습니다. Ctrl+Z 로 되돌릴 수 없습니다";
+                    string why = !hasCsv ? "The source table file was not found"
+                               : entry.Plan.IsNoOp ? "Baking now would change nothing"
+                               : "Bakes this table alone, right now. This cannot be undone with Ctrl+Z";
 
-                    if (GUILayout.Button(new GUIContent("지금 굽기", why), GUILayout.Width(84)))
+                    if (GUILayout.Button(new GUIContent("Bake Now", why), GUILayout.Width(84)))
                     {
                         BakeOne(entry);
                     }
@@ -742,8 +752,8 @@ namespace CsvPipeline
             }
         }
 
-        /// <summary>변경 한 줄을 그립니다.</summary>
-        /// <param name="change">그릴 변경입니다.</param>
+        /// <summary>Draws one change row.</summary>
+        /// <param name="change">Change to draw.</param>
         private static void DrawChange(CsvPlannedChange change)
         {
             using (new EditorGUILayout.HorizontalScope())
@@ -758,7 +768,7 @@ namespace CsvPipeline
 
                 if (change.Line > 0)
                 {
-                    CsvEditorUI.ColoredLabel(new GUIContent($"{change.Line}행", "원본 표에서의 줄 번호입니다"),
+                    CsvEditorUI.ColoredLabel(new GUIContent($"#{change.Line}", "Row number in the source table"),
                                              CsvEditorUI.Muted, EditorStyles.miniLabel, GUILayout.Width(44));
                 }
 
@@ -770,7 +780,7 @@ namespace CsvPipeline
                 GUILayout.FlexibleSpace();
 
                 if (!string.IsNullOrEmpty(change.AssetPath)
-                    && GUILayout.Button(new GUIContent("찾기", "이 에셋을 프로젝트 창에서 찾습니다"),
+                    && GUILayout.Button(new GUIContent("Ping", "Pings this asset in the Project window"),
                                         EditorStyles.miniButton, GUILayout.Width(44)))
                 {
                     Ping(change.AssetPath);
@@ -783,11 +793,12 @@ namespace CsvPipeline
         }
 
         /// <summary>
-        /// 필드 하나하나가 어떻게 바뀌는지입니다.
-        /// 열 이름·이전·다음을 <b>같은 가로 위치</b>에 세워, 여러 줄을 위아래로 훑을 수 있게 합니다.
-        /// 칸 너비는 창 너비를 따릅니다 — 고정 픽셀로 두면 창을 좁혔을 때 가로로 잘립니다.
+        /// How each individual field changes.
+        /// Column name, before, and after all sit at <b>the same horizontal position</b>, so several rows
+        /// can be scanned down the page. Column widths follow the window width — fixed pixels would cut
+        /// the row off sideways once the window is narrowed.
         /// </summary>
-        /// <param name="change">그릴 변경입니다.</param>
+        /// <param name="change">Change to draw.</param>
         private static void DrawFieldChanges(CsvPlannedChange change)
         {
             if (change.Fields.Count == 0) return;
@@ -804,7 +815,7 @@ namespace CsvPipeline
                 {
                     GUILayout.Space(indent);
 
-                    CsvEditorUI.ColoredLabel(new GUIContent(field.Column, $"필드 {field.Field}"),
+                    CsvEditorUI.ColoredLabel(new GUIContent(field.Column, $"Field {field.Field}"),
                                              CsvEditorUI.Muted, EditorStyles.miniLabel,
                                              GUILayout.Width(columnWidth));
 
@@ -821,68 +832,68 @@ namespace CsvPipeline
         }
 
         /// <summary>
-        /// 표가 하나도 없을 때의 안내입니다. 설치 직후 이 창을 열면 여기부터 보게 되므로,
-        /// "없습니다"로 끝내지 않고 무엇을 해야 하는지까지 적습니다.
+        /// The message shown when there is not a single table. Opening this window right after installing
+        /// starts here, so it does not stop at "there is nothing" — it says what to do next.
         /// </summary>
         private void DrawGettingStarted()
         {
             CsvPipelineSettings settings = CsvPipelineSettings.Instance;
 
             CsvEditorUI.EmptyState(
-                "아직 굽는 표가 없습니다",
-                $"지금 보고 있는 CSV 루트는 {settings.CsvRootFolder} 입니다.\n\n"
-                + "표를 붙이는 길은 둘입니다.\n"
-                + "① 코드 없이 — ScriptableObject 에 [CsvAsset(\"표이름.csv\", \"Id열\")] 을 붙이면\n"
-                + "     필드 이름과 열 이름을 대소문자 무시로 맞춰 굽습니다.\n"
-                + "② 코드로 — 값의 뜻이 다른 열에 따라 달라지는 표는 CsvRowImporter 같은 베이스를\n"
-                + "     상속해 행→에셋 매핑을 직접 적습니다.\n\n"
-                + "Package Manager 의 Samples 에서 Quick Start 를 가져오면 동작하는 예제를 볼 수 있습니다.",
-                "Quick Start 샘플 가져오기",
+                "No tables are baked yet",
+                $"The CSV root currently in effect is {settings.CsvRootFolder}.\n\n"
+                + "There are two ways to hook a table up.\n"
+                + "① Without code — put [CsvAsset(\"table.csv\", \"IdColumn\")] on a ScriptableObject and it\n"
+                + "     bakes by matching field names to column names, ignoring case.\n"
+                + "② With code — for a table where a value means different things depending on another\n"
+                + "     column, inherit a base such as CsvRowImporter and write the row→asset mapping yourself.\n\n"
+                + "Import Quick Start from Samples in the Package Manager to see a working example.",
+                "Import the Quick Start sample",
                 () => UnityEditor.PackageManager.UI.Window.Open("com.toflaks.csv-pipeline"),
-                ("CSV 루트 확인", () => CurrentTab = Tab.Settings),
-                ("다시 훑기", () => Rescan()));
+                ("Check the CSV root", () => CurrentTab = Tab.Settings),
+                ("Rescan", () => Rescan()));
         }
 
         // ====================================================================================================
         // 표기
         // ====================================================================================================
 
-        /// <summary>변경 종류의 아이콘입니다.</summary>
-        /// <param name="kind">표기할 종류입니다.</param>
-        /// <returns>그릴 내용입니다.</returns>
+        /// <summary>The icon for a change kind.</summary>
+        /// <param name="kind">Kind to show.</param>
+        /// <returns>What to draw.</returns>
         private static GUIContent ChangeIcon(CsvChangeKind kind)
         {
             switch (kind)
             {
-                case CsvChangeKind.Create: return CsvEditorUI.IconOr("d_Toolbar Plus", "+", "새로 만듭니다");
-                case CsvChangeKind.Delete: return CsvEditorUI.IconOr("d_Toolbar Minus", "−", "지웁니다");
-                case CsvChangeKind.Preserve: return CsvEditorUI.IconOr("d_AssetLock", "=", "지우지 않고 남깁니다");
-                case CsvChangeKind.Skip: return CsvEditorUI.IconOr("d_winbtn_mac_min", "/", "건너뜁니다");
-                default: return CsvEditorUI.IconOr("d_Refresh", "~", "값을 바꿉니다");
+                case CsvChangeKind.Create: return CsvEditorUI.IconOr("d_Toolbar Plus", "+", "Creates a new asset");
+                case CsvChangeKind.Delete: return CsvEditorUI.IconOr("d_Toolbar Minus", "−", "Deletes the asset");
+                case CsvChangeKind.Preserve: return CsvEditorUI.IconOr("d_AssetLock", "=", "Keeps it instead of deleting it");
+                case CsvChangeKind.Skip: return CsvEditorUI.IconOr("d_winbtn_mac_min", "/", "Skips it");
+                default: return CsvEditorUI.IconOr("d_Refresh", "~", "Changes values");
             }
         }
 
-        /// <summary>변경 종류의 한 마디입니다.</summary>
-        /// <param name="kind">표기할 종류입니다.</param>
-        /// <returns>표기 문자열입니다.</returns>
+        /// <summary>The one word for a change kind.</summary>
+        /// <param name="kind">Kind to show.</param>
+        /// <returns>Text to show.</returns>
         private static string ChangeWord(CsvChangeKind kind)
         {
             switch (kind)
             {
-                case CsvChangeKind.Create: return "생성";
-                case CsvChangeKind.Delete: return "삭제";
-                case CsvChangeKind.Preserve: return "보존";
-                case CsvChangeKind.Skip: return "건너뜀";
-                default: return "갱신";
+                case CsvChangeKind.Create: return "Create";
+                case CsvChangeKind.Delete: return "Delete";
+                case CsvChangeKind.Preserve: return "Preserve";
+                case CsvChangeKind.Skip: return "Skip";
+                default: return "Update";
             }
         }
 
         /// <summary>
-        /// 변경 종류의 색입니다. 삭제는 빨강, <b>보존과 건너뜀은 노랑</b>입니다 —
-        /// 둘 다 "표에 적힌 대로 되지 않았다"는 뜻이라 눈에 걸려야 합니다.
+        /// The color for a change kind. Delete is red, and <b>preserve and skip are yellow</b> —
+        /// both mean "it did not turn out the way the table says", so they have to catch the eye.
         /// </summary>
-        /// <param name="kind">표기할 종류입니다.</param>
-        /// <returns>글자색입니다.</returns>
+        /// <param name="kind">Kind to show.</param>
+        /// <returns>Text color.</returns>
         private static Color ChangeColor(CsvChangeKind kind)
         {
             switch (kind)
@@ -894,8 +905,8 @@ namespace CsvPipeline
             }
         }
 
-        /// <summary>에셋을 골라 프로젝트 창에서 반짝입니다.</summary>
-        /// <param name="path">찾아갈 에셋 경로입니다.</param>
+        /// <summary>Selects the asset and flashes it in the Project window.</summary>
+        /// <param name="path">Path of the asset to ping.</param>
         private static void Ping(string path)
         {
             if (string.IsNullOrEmpty(path)) return;
@@ -908,15 +919,15 @@ namespace CsvPipeline
         }
 
         /// <summary>
-        /// 칸에 들어갈 값입니다. 길면 줄이되 <b>전체 값을 툴팁에 담습니다</b> —
-        /// 줄여 놓고 볼 길이 없으면 미리보기가 답을 반만 주는 셈입니다.
+        /// The value that goes in a column. Long values are shortened, but <b>the full value goes into the
+        /// tooltip</b> — shorten it with no way to see the rest and the preview answers only half the question.
         /// </summary>
-        /// <param name="value">표시할 값입니다.</param>
-        /// <param name="width">칸의 너비입니다.</param>
-        /// <returns>그릴 내용입니다.</returns>
+        /// <param name="value">Value to show.</param>
+        /// <param name="width">Width of the column.</param>
+        /// <returns>What to draw.</returns>
         private static GUIContent Value(string value, float width)
         {
-            if (string.IsNullOrEmpty(value)) return new GUIContent("(빈 값)", "이 셀은 비어 있습니다");
+            if (string.IsNullOrEmpty(value)) return new GUIContent("(empty)", "This cell is empty");
 
             string flat = value.Replace('\n', ' ');
             int max = Mathf.Max(6, Mathf.FloorToInt(width / 7f));

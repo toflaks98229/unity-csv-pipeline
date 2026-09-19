@@ -220,7 +220,7 @@ namespace CsvPipeline.Tests
 
             WriteCsv("Id,Title,MaxSpeed,Stock,OwnerId,HP\nWidget_A,첫 위젯,30,12,Player,100\n");
 
-            LogAssert.Expect(LogType.Warning, new Regex("참조 중이라 보존"));
+            LogAssert.Expect(LogType.Warning, new Regex("still referenced, so it is preserved"));
             CsvImportReport report = Bake();
 
             Assert.AreEqual(0, report.Deleted, report.Summary());

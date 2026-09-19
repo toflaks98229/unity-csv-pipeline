@@ -2,64 +2,64 @@ using UnityEngine;
 
 namespace CsvPipeline
 {
-    /// <summary>목록에서 키로 내릴 수 있는 명령입니다.</summary>
+    /// <summary>Commands the list can receive from a key press.</summary>
     public enum CsvListCommand
     {
-        /// <summary>이 키에는 뜻이 없습니다.</summary>
+        /// <summary>This key has no meaning here.</summary>
         None,
 
-        /// <summary>위 항목으로 갑니다.</summary>
+        /// <summary>Moves to the item above.</summary>
         MoveUp,
 
-        /// <summary>아래 항목으로 갑니다.</summary>
+        /// <summary>Moves to the item below.</summary>
         MoveDown,
 
-        /// <summary>첫 항목으로 갑니다.</summary>
+        /// <summary>Moves to the first item.</summary>
         MoveFirst,
 
-        /// <summary>마지막 항목으로 갑니다.</summary>
+        /// <summary>Moves to the last item.</summary>
         MoveLast,
 
-        /// <summary>고른 항목을 펼칩니다.</summary>
+        /// <summary>Expands the selected item.</summary>
         Expand,
 
-        /// <summary>고른 항목을 접습니다.</summary>
+        /// <summary>Collapses the selected item.</summary>
         Collapse,
 
-        /// <summary>고른 항목의 펼침을 뒤집습니다.</summary>
+        /// <summary>Flips the selected item between expanded and collapsed.</summary>
         Toggle,
 
-        /// <summary>고른 항목을 굽습니다.</summary>
+        /// <summary>Bakes the selected item.</summary>
         Activate,
 
-        /// <summary>검색 칸으로 초점을 옮깁니다.</summary>
+        /// <summary>Moves focus to the search field.</summary>
         Find,
 
-        /// <summary>검색어를 지웁니다.</summary>
+        /// <summary>Clears the search term.</summary>
         ClearSearch,
     }
 
     /// <summary>
-    /// 키 입력을 목록 명령으로 옮깁니다.
+    /// Translates key presses into list commands.
     /// <para>
-    /// Unity Editor Design System 은 <b>모든 화면이 마우스 없이 키보드만으로 닿을 수 있어야 한다</b>고
-    /// 요구합니다(US-0180). 이 창의 목록은 그 요구를 지키지 못하고 있었습니다 — 펼치기도 굽기도
-    /// 마우스로만 되었습니다.
+    /// The Unity Editor Design System requires that <b>every screen be reachable with the keyboard
+    /// alone, without a mouse</b> (US-0180). This window's list was not meeting that requirement —
+    /// expanding and baking both took a mouse.
     /// </para>
     /// <para>
-    /// 어느 키가 무슨 뜻인지는 <b>눈에 보이지 않는 판단</b>이라 그리기에서 떼어 둡니다.
-    /// 그리기 안에 두면 화면 없이 확인할 방법이 없어집니다.
+    /// Which key means what is an <b>invisible judgment</b>, so it is kept apart from the drawing code.
+    /// Leave it inside the drawing code and there is no way to check it without a screen.
     /// </para>
     /// </summary>
     public static class CsvListKeys
     {
         /// <summary>
-        /// 키 하나를 명령으로 옮깁니다. 뜻이 없으면 <see cref="CsvListCommand.None"/> 입니다.
+        /// Translates one key into a command. A key with no meaning gives <see cref="CsvListCommand.None"/>.
         /// </summary>
-        /// <param name="type">이벤트 종류입니다. <see cref="EventType.KeyDown"/> 만 봅니다.</param>
-        /// <param name="key">눌린 키입니다.</param>
-        /// <param name="modifiers">함께 눌린 보조 키입니다.</param>
-        /// <returns>내릴 명령입니다.</returns>
+        /// <param name="type">Event type. Only <see cref="EventType.KeyDown"/> is considered.</param>
+        /// <param name="key">Key that was pressed.</param>
+        /// <param name="modifiers">Modifier keys held at the same time.</param>
+        /// <returns>Command to issue.</returns>
         public static CsvListCommand Read(EventType type, KeyCode key, EventModifiers modifiers)
         {
             if (type != EventType.KeyDown) return CsvListCommand.None;
@@ -88,14 +88,14 @@ namespace CsvPipeline
         }
 
         /// <summary>
-        /// 명령을 골라 놓은 자리에 적용해 새 자리를 돌려줍니다.
-        /// 목록이 비어 있으면 -1 입니다. 끝에서는 <b>감싸지 않습니다</b> — 감싸면 어디까지 왔는지
-        /// 알 수 없어 사람이 목록의 끝을 느끼지 못합니다.
+        /// Applies a command to the selected index and returns the new one.
+        /// An empty list gives -1. At either end it <b>does not wrap</b> — wrapping hides how far you
+        /// have come, so the person never feels the end of the list.
         /// </summary>
-        /// <param name="command">내려진 명령입니다.</param>
-        /// <param name="current">지금 고른 자리입니다. 고른 것이 없으면 -1 입니다.</param>
-        /// <param name="count">목록의 길이입니다.</param>
-        /// <returns>새로 골라야 할 자리입니다.</returns>
+        /// <param name="command">Command that was issued.</param>
+        /// <param name="current">Currently selected index. -1 when nothing is selected.</param>
+        /// <param name="count">Length of the list.</param>
+        /// <returns>Index that should now be selected.</returns>
         public static int Move(CsvListCommand command, int current, int count)
         {
             if (count <= 0) return -1;

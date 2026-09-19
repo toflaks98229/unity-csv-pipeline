@@ -6,18 +6,18 @@ using UnityEngine;
 namespace CsvPipeline
 {
     /// <summary>
-    /// 필드 값을 셀 문자열로 되돌립니다. <see cref="CsvValueBinder"/>의 반대 방향이며,
-    /// 내보내기와 미리보기가 같은 표기를 쓰도록 한 곳에 둡니다.
+    /// Turns field values back into cell text. This is the opposite direction of <see cref="CsvValueBinder"/>,
+    /// and it lives in one place so that export and preview use the same notation.
     /// </summary>
     public static class CsvValueFormatter
     {
-        /// <summary>리스트를 이을 때 쓰는 기본 구분자입니다.</summary>
+        /// <summary>Default separator used when joining a list.</summary>
         public const char DefaultSeparator = ';';
 
-        /// <summary>프로퍼티 값을 셀 문자열로 되돌립니다.</summary>
-        /// <param name="property">읽을 프로퍼티입니다. null이면 빈 문자열입니다.</param>
-        /// <param name="separators">리스트를 이을 때 쓸 구분자들입니다. 비우면 기본값입니다.</param>
-        /// <returns>셀 문자열입니다.</returns>
+        /// <summary>Turns a property value back into cell text.</summary>
+        /// <param name="property">Property to read. Null yields an empty string.</param>
+        /// <param name="separators">Separators to join a list with. Empty means the default.</param>
+        /// <returns>The cell text.</returns>
         public static string Format(SerializedProperty property, char[] separators = null)
         {
             if (property == null) return string.Empty;
@@ -37,9 +37,9 @@ namespace CsvPipeline
             return FormatScalar(property);
         }
 
-        /// <summary>스칼라 프로퍼티 하나를 셀 문자열로 되돌립니다.</summary>
-        /// <param name="property">읽을 프로퍼티입니다.</param>
-        /// <returns>셀 문자열입니다.</returns>
+        /// <summary>Turns one scalar property back into cell text.</summary>
+        /// <param name="property">Property to read.</param>
+        /// <returns>The cell text.</returns>
         public static string FormatScalar(SerializedProperty property)
         {
             switch (property.propertyType)
@@ -86,9 +86,9 @@ namespace CsvPipeline
             }
         }
 
-        /// <summary>숫자들을 공백으로 이어 붙입니다. (읽는 쪽이 공백 구분을 받습니다)</summary>
-        /// <param name="values">이어 붙일 값들입니다.</param>
-        /// <returns>셀 문자열입니다.</returns>
+        /// <summary>Joins numbers with a space. (The reading side accepts space separation.)</summary>
+        /// <param name="values">Values to join.</param>
+        /// <returns>The cell text.</returns>
         private static string Join(params float[] values)
         {
             var parts = new string[values.Length];

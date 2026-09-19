@@ -5,51 +5,51 @@ using UnityEngine;
 
 namespace CsvPipeline
 {
-    /// <summary>표의 열 하나와 에셋 필드 하나의 연결입니다.</summary>
+    /// <summary>Binding between one table column and one asset field.</summary>
     public sealed class CsvBinding
     {
-        /// <summary>표의 열 이름입니다.</summary>
+        /// <summary>Column name in the table.</summary>
         public string Column;
 
-        /// <summary>대상 필드의 직렬화 경로입니다. (최상위 필드 이름)</summary>
+        /// <summary>Serialization path of the target field. (top-level field name)</summary>
         public string PropertyPath;
 
-        /// <summary>대상 필드의 타입입니다. 오브젝트 참조·리스트 처리에 씁니다.</summary>
+        /// <summary>Type of the target field. Used for object references and lists.</summary>
         public Type FieldType;
 
-        /// <summary>이 열이 표에 반드시 있어야 하는지 여부입니다.</summary>
+        /// <summary>Whether this column must be present in the table.</summary>
         public bool Required;
 
-        /// <summary>셀이 비었을 때 기존 값을 덮어쓸지 여부입니다.</summary>
+        /// <summary>Whether an empty cell overwrites the existing value.</summary>
         public bool OverwriteWhenEmpty;
 
-        /// <summary>리스트 셀을 나눌 구분자들입니다.</summary>
+        /// <summary>Separators that split a list cell.</summary>
         public char[] Separators;
 
-        /// <summary>오브젝트 참조 검색을 한정할 폴더입니다. null이면 프로젝트 전체입니다.</summary>
+        /// <summary>Folder that narrows the object reference search. Null means the whole project.</summary>
         public string ReferenceFolder;
     }
 
     /// <summary>
-    /// <see cref="CsvAssetAttribute"/>가 붙은 타입 하나에서 읽어 낸 표 ↔ 에셋 연결 계획입니다.
+    /// Table-to-asset binding plan read from one type carrying <see cref="CsvAssetAttribute"/>.
     /// </summary>
     public sealed class CsvSchema
     {
-        /// <summary>구울 에셋 타입입니다.</summary>
+        /// <summary>Asset type to bake.</summary>
         public Type AssetType { get; private set; }
 
-        /// <summary>타입에 붙어 있던 선언입니다.</summary>
+        /// <summary>Declaration that was attached to the type.</summary>
         public CsvAssetAttribute Declaration { get; private set; }
 
-        /// <summary>열 ↔ 필드 연결 목록입니다. 표에 적힌 순서가 아니라 필드 선언 순서입니다.</summary>
+        /// <summary>Column-to-field bindings. They follow field declaration order, not table order.</summary>
         public List<CsvBinding> Bindings { get; } = new List<CsvBinding>();
 
         /// <summary>
-        /// 산출물이 놓일 폴더를 정합니다.
-        /// 선언에 적혀 있으면 그것을 쓰고, 비어 있으면 <b>원본 표 옆의 타입 이름 폴더</b>입니다.
+        /// Settles the folder the output assets go into.
+        /// The declaration wins when it names one; otherwise it is <b>a folder named after the type, next to the source table</b>.
         /// </summary>
-        /// <param name="csvPath">원본 표의 에셋 경로입니다. null이면 파일 이름으로 찾습니다.</param>
-        /// <returns>산출물 폴더 경로이거나, 표를 찾지 못했으면 null입니다.</returns>
+        /// <param name="csvPath">Asset path of the source table. Null looks it up by file name.</param>
+        /// <returns>Output folder path, or null when the table is not found.</returns>
         public string ResolveOutputFolder(string csvPath = null)
         {
             string declared = Declaration.OutputFolder;
@@ -62,7 +62,7 @@ namespace CsvPipeline
             return string.IsNullOrEmpty(folder) ? null : $"{folder}/{AssetType.Name}";
         }
 
-        /// <summary>반드시 있어야 하는 열들입니다. 식별자 열은 항상 포함합니다.</summary>
+        /// <summary>Columns that must be present. The Id column is always included.</summary>
         public IEnumerable<string> RequiredColumns
         {
             get
@@ -75,17 +75,48 @@ namespace CsvPipeline
             }
         }
 
+        /// <summary>
+        /// Whether this declaration takes <b>only the fields that are tagged</b>.
+        /// (<c>AutoMap = false</c> — a new field does not follow into the table on its own)
+        /// </summary>
+        public bool OptIn => !Declaration.AutoMap;
+
+        /// <summary>
+        /// Serialized fields left unbound because they carry no tag. Empty unless <see cref="OptIn"/>.
+        /// <para>
+        /// When you tag <b>what to include</b> instead of tagging what to leave out one by one, a field
+        /// you forgot to tag drops out without a word. That silence is the only value of this mode,
+        /// so we leave a way to ask what dropped out.
+        /// </para>
+        /// </summary>
+        /// <returns>Names of the fields left out for want of a tag. Declaration order is kept.</returns>
+        public List<string> UntaggedFields()
+        {
+            var untagged = new List<string>();
+            if (!OptIn) return untagged;
+
+            foreach (FieldInfo field in SerializableFields(AssetType))
+            {
+                // 빼라고 적어 둔 것은 잊은 것이 아닙니다.
+                if (Attribute.IsDefined(field, typeof(CsvIgnoreAttribute))) continue;
+                if (Attribute.IsDefined(field, typeof(CsvColumnAttribute))) continue;
+
+                untagged.Add(field.Name);
+            }
+            return untagged;
+        }
+
         // ====================================================================================================
         // 수집
         // ====================================================================================================
 
-        /// <summary>찾아 둔 스키마입니다. 타입 정보는 도메인 리로드로만 바뀌므로 캐시해도 안전합니다.</summary>
+        /// <summary>Schemas found so far. Type information changes only on a domain reload, so caching is safe.</summary>
         private static List<CsvSchema> _cached;
 
         /// <summary>
-        /// 로드된 어셈블리 전체에서 <see cref="CsvAssetAttribute"/>가 붙은 타입을 찾아 스키마를 만듭니다.
+        /// Scans every loaded assembly for types carrying <see cref="CsvAssetAttribute"/> and builds their schemas.
         /// </summary>
-        /// <returns>찾은 스키마들입니다. 파일 이름 순입니다.</returns>
+        /// <returns>The schemas found, ordered by file name.</returns>
         public static IReadOnlyList<CsvSchema> All()
         {
             if (_cached != null) return _cached;
@@ -117,14 +148,14 @@ namespace CsvPipeline
             return _cached;
         }
 
-        /// <summary>다음 조회에서 스키마를 다시 찾도록 캐시를 버립니다.</summary>
+        /// <summary>Drops the cache so the next lookup finds the schemas again.</summary>
         public static void InvalidateCache() => _cached = null;
 
         /// <summary>
-        /// 타입 하나의 스키마를 만듭니다. <see cref="CsvAssetAttribute"/>가 없거나 선언이 불완전하면 null입니다.
+        /// Builds the schema for one type. Null when <see cref="CsvAssetAttribute"/> is absent or the declaration is incomplete.
         /// </summary>
-        /// <param name="type">대상 ScriptableObject 타입입니다.</param>
-        /// <returns>만들어진 스키마이거나 null입니다.</returns>
+        /// <param name="type">Target ScriptableObject type.</param>
+        /// <returns>The schema that was built, or null.</returns>
         public static CsvSchema For(Type type)
         {
             if (type == null) return null;
@@ -134,18 +165,45 @@ namespace CsvPipeline
         }
 
         /// <summary>
-        /// 타입과 선언에서 스키마를 만듭니다. 선언이 불완전하면 경고 후 null입니다.
+        /// Builds a schema even for a type with no declaration. Use it for a type <b>before its table exists</b>.
+        /// <para>
+        /// When you want to export the table first, put it on a sheet, and author it there, that type usually
+        /// does not carry <see cref="CsvAssetAttribute"/> yet. When a declaration is present, <b>it is used as is</b> —
+        /// if the values made up here diverged from the real bake, the table a person sees and the table that bakes
+        /// would differ.
+        /// </para>
+        /// <para>
+        /// <b>Do not bake with this.</b> Baking never consults a made-up declaration,
+        /// so baking with this schema produces a result different from the real import.
+        /// </para>
         /// </summary>
-        /// <param name="type">대상 ScriptableObject 타입입니다.</param>
-        /// <param name="declaration">타입에 붙은 선언입니다.</param>
-        /// <returns>만들어진 스키마이거나 null입니다.</returns>
+        /// <param name="type">Target ScriptableObject type.</param>
+        /// <param name="fileName">Table file name to use when there is no declaration.</param>
+        /// <param name="idColumn">Id column name to use when there is no declaration.</param>
+        /// <returns>The schema that was built, or null when it cannot be built.</returns>
+        public static CsvSchema Draft(Type type, string fileName, string idColumn)
+        {
+            if (type == null) return null;
+
+            CsvSchema declared = For(type);
+            if (declared != null) return declared;
+
+            return Build(type, new CsvAssetAttribute(fileName, idColumn));
+        }
+
+        /// <summary>
+        /// Builds a schema from a type and its declaration. Warns and returns null when the declaration is incomplete.
+        /// </summary>
+        /// <param name="type">Target ScriptableObject type.</param>
+        /// <param name="declaration">Declaration attached to the type.</param>
+        /// <returns>The schema that was built, or null.</returns>
         private static CsvSchema Build(Type type, CsvAssetAttribute declaration)
         {
             if (string.IsNullOrEmpty(declaration.FileName) || string.IsNullOrEmpty(declaration.IdColumn))
             {
                 Debug.LogWarning(
-                    $"[CsvPipeline] {type.Name}의 [CsvAsset] 선언이 비어 있습니다. "
-                    + "fileName과 idColumn을 모두 지정하십시오.");
+                    $"[CsvPipeline] The [CsvAsset] declaration on {type.Name} is empty. "
+                    + "Specify both fileName and idColumn.");
                 return null;
             }
 
@@ -174,11 +232,11 @@ namespace CsvPipeline
         }
 
         /// <summary>
-        /// Unity가 직렬화하는 인스턴스 필드를 상속 계층까지 훑어 돌려줍니다.
-        /// (public 이거나 <c>[SerializeField]</c>가 붙은 것, <c>[NonSerialized]</c>·static·const 제외)
+        /// Walks the inheritance chain and returns the instance fields Unity serializes.
+        /// (public, or carrying <c>[SerializeField]</c>; <c>[NonSerialized]</c>, static and const are excluded)
         /// </summary>
-        /// <param name="type">훑을 타입입니다.</param>
-        /// <returns>직렬화 대상 필드들입니다. 기반 타입이 먼저입니다.</returns>
+        /// <param name="type">Type to walk.</param>
+        /// <returns>The serialized fields. Base type fields come first.</returns>
         private static IEnumerable<FieldInfo> SerializableFields(Type type)
         {
             var chain = new List<Type>();
@@ -204,9 +262,9 @@ namespace CsvPipeline
             }
         }
 
-        /// <summary>구분자 문자열을 배열로 바꿉니다. 비어 있으면 기본 구분자입니다.</summary>
-        /// <param name="separators">구분자 문자들을 이어 붙인 문자열입니다.</param>
-        /// <returns>쓸 구분자 배열입니다.</returns>
+        /// <summary>Turns a separator string into an array. Empty means the default separators.</summary>
+        /// <param name="separators">String concatenating the separator characters.</param>
+        /// <returns>The separator array to use.</returns>
         private static char[] ParseSeparators(string separators)
             => string.IsNullOrEmpty(separators) ? CsvRow.ListSeparators : separators.ToCharArray();
     }

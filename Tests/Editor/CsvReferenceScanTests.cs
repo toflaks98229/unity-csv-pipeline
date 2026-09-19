@@ -93,7 +93,7 @@ namespace CsvPipeline.Tests
             Bake(TwoRows);
             _assets.WithReferenceScanBlocked("검사용: 참조를 조사할 수 없습니다.");
 
-            LogAssert.Expect(LogType.Warning, new Regex("지우지 않았습니다"));
+            LogAssert.Expect(LogType.Warning, new Regex("Did not delete"));
 
             CsvImportReport report = Bake(OneRow);
 

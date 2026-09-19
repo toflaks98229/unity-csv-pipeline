@@ -2,107 +2,107 @@ using System.Collections.Generic;
 
 namespace CsvPipeline
 {
-    /// <summary>계획된 변경의 종류입니다.</summary>
+    /// <summary>Kind of a planned change.</summary>
     public enum CsvChangeKind
     {
-        /// <summary>새로 만듭니다.</summary>
+        /// <summary>Creates a new asset.</summary>
         Create,
 
-        /// <summary>기존 에셋의 값을 바꿉니다.</summary>
+        /// <summary>Changes the values of an existing asset.</summary>
         Update,
 
-        /// <summary>표에서 사라져 지웁니다.</summary>
+        /// <summary>Deletes an asset that is gone from the table.</summary>
         Delete,
 
-        /// <summary>표에서 사라졌지만 참조가 남아 보존합니다.</summary>
+        /// <summary>Preserves an asset that is gone from the table but is still referenced.</summary>
         Preserve,
 
-        /// <summary>반영하지 않고 건너뜁니다.</summary>
+        /// <summary>Skips the row without applying it.</summary>
         Skip
     }
 
-    /// <summary>필드 하나가 어떻게 바뀌는지입니다.</summary>
+    /// <summary>How one field changes.</summary>
     public sealed class CsvFieldChange
     {
-        /// <summary>값이 오는 열 이름입니다.</summary>
+        /// <summary>Name of the column the value comes from.</summary>
         public string Column;
 
-        /// <summary>바뀌는 필드 이름입니다.</summary>
+        /// <summary>Name of the field that changes.</summary>
         public string Field;
 
-        /// <summary>지금 값입니다.</summary>
+        /// <summary>Current value.</summary>
         public string From;
 
-        /// <summary>바뀔 값입니다.</summary>
+        /// <summary>Value it changes to.</summary>
         public string To;
     }
 
-    /// <summary>에셋 하나에 예정된 변경입니다.</summary>
+    /// <summary>A change planned for one asset.</summary>
     public sealed class CsvPlannedChange
     {
-        /// <summary>변경의 종류입니다.</summary>
+        /// <summary>Kind of the change.</summary>
         public CsvChangeKind Kind;
 
-        /// <summary>대상 에셋 경로입니다. 아직 없으면 만들어질 경로입니다.</summary>
+        /// <summary>Path of the target asset. When it does not exist yet, the path it will be created at.</summary>
         public string AssetPath;
 
-        /// <summary>원본 표에서의 줄 번호입니다. 모르면 0입니다.</summary>
+        /// <summary>Line number in the source table. 0 when unknown.</summary>
         public int Line;
 
-        /// <summary>사람이 읽을 부연입니다. (건너뛰는 이유, 보존하는 이유 등)</summary>
+        /// <summary>Human-readable note. (why it is skipped, why it is preserved, and so on)</summary>
         public string Note;
 
-        /// <summary>바뀌는 필드들입니다. 경로 수준으로만 계획했으면 비어 있습니다.</summary>
+        /// <summary>Fields that change. Empty when the plan only went as far as paths.</summary>
         public List<CsvFieldChange> Fields = new List<CsvFieldChange>();
 
-        /// <summary>표시용 이름입니다. (경로의 파일명)</summary>
+        /// <summary>Name to display. (the file name in the path)</summary>
         public string DisplayName =>
-            string.IsNullOrEmpty(AssetPath) ? "(이름 없음)" : System.IO.Path.GetFileNameWithoutExtension(AssetPath);
+            string.IsNullOrEmpty(AssetPath) ? "(unnamed)" : System.IO.Path.GetFileNameWithoutExtension(AssetPath);
     }
 
     /// <summary>
-    /// 표를 지금 구우면 <b>무엇이 달라지는지</b>를 미리 계산한 결과입니다. 아무것도 쓰지 않습니다.
+    /// Precomputed answer to <b>what changes</b> if you bake the table now. It writes nothing.
     /// </summary>
     public sealed class CsvImportPlan
     {
-        /// <summary>계획을 만듭니다.</summary>
-        /// <param name="fileName">원본 표의 파일 이름입니다.</param>
-        /// <param name="label">사람이 읽을 대상 이름입니다. (보통 에셋 타입 이름)</param>
+        /// <summary>Creates a plan.</summary>
+        /// <param name="fileName">File name of the source table.</param>
+        /// <param name="label">Human-readable name of the target. (usually the asset type name)</param>
         public CsvImportPlan(string fileName, string label)
         {
             FileName = fileName;
             Label = label;
         }
 
-        /// <summary>원본 표의 파일 이름입니다.</summary>
+        /// <summary>File name of the source table.</summary>
         public string FileName { get; }
 
-        /// <summary>사람이 읽을 대상 이름입니다.</summary>
+        /// <summary>Human-readable name of the target.</summary>
         public string Label { get; }
 
-        /// <summary>산출물 폴더입니다. 정하지 못했으면 null입니다.</summary>
+        /// <summary>Output folder. null when it could not be determined.</summary>
         public string OutputFolder { get; set; }
 
-        /// <summary>예정된 변경들입니다.</summary>
+        /// <summary>Planned changes.</summary>
         public List<CsvPlannedChange> Changes { get; } = new List<CsvPlannedChange>();
 
-        /// <summary>계산 도중 발견한 문제들입니다.</summary>
+        /// <summary>Issues found while computing the plan.</summary>
         public List<CsvIssue> Issues { get; } = new List<CsvIssue>();
 
-        /// <summary>계획을 세울 수 없었으면 그 이유입니다. 세웠으면 null입니다.</summary>
+        /// <summary>Why no plan could be built. null when one was built.</summary>
         public string Unsupported { get; set; }
 
-        /// <summary>계획을 세울 수 있었는지 여부입니다.</summary>
+        /// <summary>Whether a plan could be built.</summary>
         public bool IsSupported => Unsupported == null;
 
-        /// <summary>바뀌는 것이 하나도 없으면 true입니다.</summary>
+        /// <summary>True when nothing changes at all.</summary>
         public bool IsNoOp => Count(CsvChangeKind.Create) == 0
                            && Count(CsvChangeKind.Update) == 0
                            && Count(CsvChangeKind.Delete) == 0;
 
-        /// <summary>지정 종류의 변경 개수입니다.</summary>
-        /// <param name="kind">셀 종류입니다.</param>
-        /// <returns>개수입니다.</returns>
+        /// <summary>Number of changes of the given kind.</summary>
+        /// <param name="kind">Kind to count.</param>
+        /// <returns>The count.</returns>
         public int Count(CsvChangeKind kind)
         {
             int n = 0;
@@ -113,12 +113,12 @@ namespace CsvPipeline
             return n;
         }
 
-        /// <summary>변경 하나를 더합니다.</summary>
-        /// <param name="kind">변경의 종류입니다.</param>
-        /// <param name="assetPath">대상 에셋 경로입니다.</param>
-        /// <param name="line">원본 줄 번호입니다.</param>
-        /// <param name="note">사람이 읽을 부연입니다.</param>
-        /// <returns>더해진 변경입니다. 필드 목록을 이어서 채울 수 있습니다.</returns>
+        /// <summary>Adds one change.</summary>
+        /// <param name="kind">Kind of the change.</param>
+        /// <param name="assetPath">Path of the target asset.</param>
+        /// <param name="line">Line number in the source.</param>
+        /// <param name="note">Human-readable note.</param>
+        /// <returns>The added change. You can go on to fill in its field list.</returns>
         public CsvPlannedChange Add(CsvChangeKind kind, string assetPath, int line = 0, string note = null)
         {
             var change = new CsvPlannedChange { Kind = kind, AssetPath = assetPath, Line = line, Note = note };
@@ -126,26 +126,26 @@ namespace CsvPipeline
             return change;
         }
 
-        /// <summary>"생성 3 / 갱신 12 / 삭제 1" 형태의 요약입니다.</summary>
-        /// <returns>요약 문자열입니다.</returns>
+        /// <summary>Summary in the form "created 3 / updated 12 / deleted 1".</summary>
+        /// <returns>Summary string.</returns>
         public string Summary()
         {
             if (!IsSupported) return Unsupported;
 
             var parts = new List<string>(5);
-            AppendCount(parts, "생성", CsvChangeKind.Create);
-            AppendCount(parts, "갱신", CsvChangeKind.Update);
-            AppendCount(parts, "삭제", CsvChangeKind.Delete);
-            AppendCount(parts, "보존", CsvChangeKind.Preserve);
-            AppendCount(parts, "건너뜀", CsvChangeKind.Skip);
+            AppendCount(parts, "created", CsvChangeKind.Create);
+            AppendCount(parts, "updated", CsvChangeKind.Update);
+            AppendCount(parts, "deleted", CsvChangeKind.Delete);
+            AppendCount(parts, "preserved", CsvChangeKind.Preserve);
+            AppendCount(parts, "skipped", CsvChangeKind.Skip);
 
-            return parts.Count == 0 ? "바뀌는 것 없음" : string.Join(" / ", parts);
+            return parts.Count == 0 ? "no changes" : string.Join(" / ", parts);
         }
 
-        /// <summary>개수가 0이 아니면 요약에 덧붙입니다.</summary>
-        /// <param name="parts">요약 조각들입니다.</param>
-        /// <param name="label">표기할 이름입니다.</param>
-        /// <param name="kind">셀 종류입니다.</param>
+        /// <summary>Appends the count to the summary when it is not zero.</summary>
+        /// <param name="parts">Pieces of the summary.</param>
+        /// <param name="label">Name to label it with.</param>
+        /// <param name="kind">Kind to count.</param>
         private void AppendCount(List<string> parts, string label, CsvChangeKind kind)
         {
             int n = Count(kind);

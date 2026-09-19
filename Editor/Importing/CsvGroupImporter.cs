@@ -1,49 +1,50 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
 namespace CsvPipeline
 {
     /// <summary>
-    /// <b>같은 식별자를 가진 여러 행 = 한 에셋</b> 임포터입니다. (표의 한 행이 에셋 안의 리스트 항목 하나인 경우)
-    /// 그룹은 CSV에 처음 등장한 순서를 지킵니다.
+    /// <b>Several rows sharing one identifier = one asset</b> importer. (when one table row is one list entry inside an asset)
+    /// Groups keep the order in which they first appear in the CSV.
     /// </summary>
-    /// <typeparam name="T">구울 ScriptableObject 타입입니다.</typeparam>
+    /// <typeparam name="T">ScriptableObject type to bake.</typeparam>
     public abstract class CsvGroupImporter<T> : CsvImportDefinition where T : ScriptableObject
     {
-        /// <summary>산출물이 놓이는 폴더입니다.</summary>
+        /// <summary>Folder the output assets go into.</summary>
         protected abstract override string OutputFolder { get; }
 
-        /// <summary>행에서 그룹 식별자(=파일명)를 뽑습니다. 비어 있으면 그 행을 건너뜁니다.</summary>
-        /// <param name="row">읽을 행입니다.</param>
-        /// <returns>그룹 식별자입니다.</returns>
+        /// <summary>Pulls the group identifier (= file name) out of a row. An empty one skips that row.</summary>
+        /// <param name="row">Row to read.</param>
+        /// <returns>The group identifier.</returns>
         protected abstract string GetGroupId(CsvRow row);
 
         /// <summary>
-        /// 한 그룹의 행들을 에셋에 기록합니다.
-        /// <b>여기서는 에셋 필드에 직접 대입하십시오.</b> (<c>SerializedObject</c>를 쓰지 않는 경로입니다)
+        /// Writes the rows of one group into the asset.
+        /// <b>Assign to the asset fields directly here.</b> (this path does not use <c>SerializedObject</c>)
         /// </summary>
-        /// <param name="groupId">그룹 식별자입니다.</param>
-        /// <param name="rows">이 그룹에 속한 행들입니다. CSV 순서를 지킵니다.</param>
-        /// <param name="asset">대상 에셋입니다.</param>
+        /// <param name="groupId">Group identifier.</param>
+        /// <param name="rows">Rows belonging to this group. CSV order is kept.</param>
+        /// <param name="asset">Target asset.</param>
         protected abstract void Bake(string groupId, IReadOnlyList<CsvRow> rows, T asset);
 
-        /// <summary>산출물 정리에 쓰는 에셋 검색 필터입니다.</summary>
+        /// <summary>Asset search filter used for output cleanup.</summary>
         protected virtual string TypeFilter => $"t:{typeof(T).Name}";
 
-        /// <summary>표에서 사라진 산출물을 에셋 이름으로 대조해 정리합니다.</summary>
+        /// <summary>Cleans up output assets that vanished from the table, matching against the asset name.</summary>
         protected sealed override CsvReconcileMode ReconcileMode => CsvReconcileMode.ByName;
 
-        /// <summary>정리 대상을 찾을 검색 필터입니다.</summary>
+        /// <summary>Search filter that finds the cleanup candidates.</summary>
         protected sealed override string ReconcileTypeFilter => TypeFilter;
 
-        /// <summary>식별자로부터 에셋 경로를 만듭니다.</summary>
-        /// <param name="groupId">그룹 식별자입니다.</param>
-        /// <returns>에셋 경로입니다.</returns>
+        /// <summary>Builds the asset path from an identifier.</summary>
+        /// <param name="groupId">Group identifier.</param>
+        /// <returns>The asset path.</returns>
         protected virtual string AssetPathFor(string groupId) => $"{OutputFolder}/{groupId}.asset";
 
-        /// <summary>행들을 식별자로 묶어 그룹마다 에셋을 굽고, 표에서 사라진 산출물을 정리합니다.</summary>
-        /// <param name="table">파싱된 표입니다.</param>
-        /// <param name="report">건수와 문제를 기록할 리포트입니다.</param>
+        /// <summary>Groups the rows by identifier, bakes an asset per group, and cleans up output assets that vanished from the table.</summary>
+        /// <param name="table">Parsed table.</param>
+        /// <param name="report">Report that records counts and problems.</param>
         protected override void Process(CsvTable table, CsvImportReport report)
         {
             CsvAssetPipeline.EnsureFolder(OutputFolder);
@@ -53,15 +54,17 @@ namespace CsvPipeline
             BakeEach(order, report, (id, _) => BakeGroup(id, groups[id]));
         }
 
-        /// <summary>행들을 식별자로 묶습니다. 그룹은 표에 처음 등장한 순서를 지킵니다.</summary>
-        /// <param name="table">파싱된 표입니다.</param>
-        /// <param name="report">문제를 기록할 리포트입니다.</param>
-        /// <param name="groups">식별자 → 행들 사전을 받습니다.</param>
-        /// <returns>식별자들의 등장 순서입니다.</returns>
+        /// <summary>Groups the rows by identifier. Groups keep the order in which they first appear in the table.</summary>
+        /// <param name="table">Parsed table.</param>
+        /// <param name="report">Report that records problems.</param>
+        /// <param name="groups">Receives the identifier-to-rows dictionary.</param>
+        /// <returns>The identifiers in order of appearance.</returns>
         private List<string> GroupRows(CsvTable table, CsvImportReport report,
                                        out Dictionary<string, List<CsvRow>> groups)
         {
-            groups = new Dictionary<string, List<CsvRow>>();
+            // 대소문자만 다른 그룹 식별자는 같은 파일 이름으로 구워집니다. 따로 묶으면 뒤 그룹이
+            // 앞 그룹의 에셋을 덮어써 앞 행들이 사라집니다. 한 그룹으로 봅니다.
+            groups = new Dictionary<string, List<CsvRow>>(StringComparer.OrdinalIgnoreCase);
             var order = new List<string>();
 
             foreach (CsvRow row in table.Rows)
@@ -95,10 +98,10 @@ namespace CsvPipeline
             return order;
         }
 
-        /// <summary>그룹 하나를 에셋으로 굽습니다.</summary>
-        /// <param name="id">그룹 식별자입니다.</param>
-        /// <param name="rows">이 그룹에 속한 행들입니다.</param>
-        /// <returns>구운 결과입니다.</returns>
+        /// <summary>Bakes one group into an asset.</summary>
+        /// <param name="id">Group identifier.</param>
+        /// <param name="rows">Rows belonging to this group.</param>
+        /// <returns>The bake result.</returns>
         private CsvBakeOutcome BakeGroup(string id, List<CsvRow> rows)
         {
             T asset = CsvAssetPipeline.CreateOrLoad<T>(AssetPathFor(id), out bool created);
@@ -114,12 +117,12 @@ namespace CsvPipeline
                                         rows.Count > 0 ? rows[0].LineNumber : 0);
         }
 
-        /// <summary>그룹마다 만들지 갱신할지, 그리고 무엇이 사라질지를 계산합니다. 쓰지는 않습니다.</summary>
-        /// <param name="table">파싱된 표입니다.</param>
-        /// <param name="plan">채울 계획입니다.</param>
+        /// <summary>Computes, per group, whether it is created or updated, and what disappears. It writes nothing.</summary>
+        /// <param name="table">Parsed table.</param>
+        /// <param name="plan">Plan to fill in.</param>
         protected override void BuildPlan(CsvTable table, CsvImportPlan plan)
         {
-            var seen = new HashSet<string>();
+            HashSet<string> seen = NewKeySet();
             var claims = new CsvIdClaims();
 
             foreach (CsvRow row in table.Rows)

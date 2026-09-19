@@ -53,5 +53,11 @@ namespace CsvPipeline.Tests
 
         /// <summary>오브젝트 참조 필드입니다.</summary>
         public Texture2D icon;
+
+        /// <summary>
+        /// 메모리 게이트웨이에 놓아 둔 에셋으로 배선되는 참조입니다.
+        /// 같은 이름이 여럿일 때의 거동을 실제 프로젝트 없이 볼 수 있게 합니다.
+        /// </summary>
+        public WidgetData linked;
     }
 }

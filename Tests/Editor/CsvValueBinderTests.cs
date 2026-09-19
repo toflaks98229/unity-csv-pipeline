@@ -210,6 +210,37 @@ namespace CsvPipeline.Tests
             Assert.AreEqual(Grade.Large, _target.grades[1]);
         }
 
+        /// <summary>
+        /// 원소 하나라도 변환되지 않으면 목록을 그대로 둡니다.
+        /// 스칼라가 실패할 때 기존 값을 남기는 것과 같은 규칙이어야 합니다 —
+        /// 같은 오타가 필드 타입에 따라 한쪽에서만 손으로 저작한 목록을 날려서는 안 됩니다.
+        /// </summary>
+        [Test]
+        public void 원소가_하나라도_틀리면_목록을_건드리지_않는다()
+        {
+            Apply("grades", "Small;Large", out _);
+            Assert.AreEqual(2, _target.grades.Length);
+
+            Assert.IsFalse(Apply("grades", "Small;Huge", out string error));
+            StringAssert.Contains("[1]", error, "몇 번째 원소가 틀렸는지 알려야 합니다.");
+
+            Assert.AreEqual(2, _target.grades.Length, "실패했으면 기존 목록이 남아야 합니다.");
+            Assert.AreEqual(Grade.Small, _target.grades[0]);
+            Assert.AreEqual(Grade.Large, _target.grades[1]);
+        }
+
+        /// <summary>실패한 뒤에도 다음 값은 정상적으로 들어갑니다. (검사용 칸이 남지 않습니다)</summary>
+        [Test]
+        public void 실패한_뒤에도_다음_값은_들어간다()
+        {
+            Apply("grades", "Small;Large", out _);
+            Apply("grades", "Small;Huge", out _);
+
+            Assert.IsTrue(Apply("grades", "Medium", out _));
+            Assert.AreEqual(1, _target.grades.Length);
+            Assert.AreEqual(Grade.Medium, _target.grades[0]);
+        }
+
         /// <summary>덮어쓰기로 지정하면 빈 셀이 리스트를 비웁니다.</summary>
         [Test]
         public void 빈_셀로_리스트를_비울_수_있다()

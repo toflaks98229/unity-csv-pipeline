@@ -139,7 +139,7 @@ namespace CsvPipeline.Tests
             Bake();
             _assets.Referenced.Add($"{OutputFolder}/Widget_B.asset");
 
-            LogAssert.Expect(LogType.Warning, new Regex("아직 참조 중이라 보존"));
+            LogAssert.Expect(LogType.Warning, new Regex("still referenced, so it is preserved"));
 
             CsvImportReport report = Bake("Id,Title,MaxSpeed,Stock,OwnerId,HP\nWidget_A,첫 위젯,30,12,Player,100\n");
 
@@ -152,7 +152,7 @@ namespace CsvPipeline.Tests
         [Test]
         public void 필수_열이_없으면_아무것도_굽지_않는다()
         {
-            LogAssert.Expect(LogType.Error, new Regex("열 'HP'"));
+            LogAssert.Expect(LogType.Error, new Regex("Column 'HP' is missing"));
 
             CsvImportReport report = Bake("Id,Title,MaxSpeed,Stock,OwnerId\nWidget_A,첫 위젯,30,12,Player\n");
 
@@ -165,7 +165,7 @@ namespace CsvPipeline.Tests
         [Test]
         public void 식별자가_빈_행은_건너뛴다()
         {
-            LogAssert.Expect(LogType.Warning, new Regex("비어 있"));
+            LogAssert.Expect(LogType.Warning, new Regex("is empty, skipping this row"));
 
             CsvImportReport report = Bake(
                 "Id,Title,MaxSpeed,Stock,OwnerId,HP\n"

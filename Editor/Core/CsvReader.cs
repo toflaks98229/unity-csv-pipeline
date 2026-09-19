@@ -8,87 +8,110 @@ using System.Text;
 namespace CsvPipeline
 {
     /// <summary>
-    /// 구분자로 나뉜 표 텍스트를 해석하는 공용 파서입니다.
-    /// RFC 4180 스타일의 따옴표 필드(내부 구분자·개행·이스케이프된 "")·BOM·CRLF를 처리하며,
-    /// 각 행을 헤더 기준으로 자동 타입 변환(int → float → string)해 돌려줍니다.
+    /// The shared parser for delimiter-separated table text.
+    /// It handles RFC 4180 style quoted fields (embedded delimiters, newlines, escaped ""), BOMs, and CRLF.
+    /// <para>
+    /// <b>Cells keep their raw text.</b> The parser never decides a type from the value — the target
+    /// field does. If the parser decided first, <c>007</c> would come back as <c>7</c> and <c>1.10</c>
+    /// as <c>1.1</c>, quietly corrupting string columns.
+    /// </para>
     /// </summary>
     public static class CsvReader
     {
-        /// <summary>쉼표 구분자입니다. (.csv)</summary>
+        /// <summary>The comma delimiter. (.csv)</summary>
         public const char Comma = ',';
 
-        /// <summary>탭 구분자입니다. (.tsv / .tab)</summary>
+        /// <summary>The tab delimiter. (.tsv / .tab)</summary>
         public const char Tab = '\t';
 
         // ====================================================================================================
         // 진입점
         // ====================================================================================================
 
-        /// <summary>텍스트 에셋을 행 목록으로 파싱합니다.</summary>
-        /// <param name="csvAsset">분석할 텍스트 에셋입니다.</param>
-        /// <returns>파싱된 행 데이터 목록입니다.</returns>
+        /// <summary>Parses a text asset into a list of rows.</summary>
+        /// <param name="csvAsset">Text asset to parse.</param>
+        /// <returns>List of parsed row data.</returns>
         public static List<Dictionary<string, object>> Read(TextAsset csvAsset)
         {
             if (csvAsset == null) return new List<Dictionary<string, object>>();
             return Read(csvAsset.text);
         }
 
-        /// <summary>원본 문자열을 행 목록으로 파싱합니다. 구분자는 내용으로 판별합니다.</summary>
-        /// <param name="text">분석할 원문입니다.</param>
-        /// <returns>파싱된 행 데이터 목록입니다.</returns>
+        /// <summary>Parses raw text into a list of rows. The delimiter is detected from the content.</summary>
+        /// <param name="text">Raw text to parse.</param>
+        /// <returns>List of parsed row data.</returns>
         public static List<Dictionary<string, object>> Read(string text) => Read(text, DetectDelimiter(text));
 
-        /// <summary>원본 문자열을 지정 구분자로 파싱해 행 목록을 돌려줍니다.</summary>
-        /// <param name="text">분석할 원문입니다.</param>
-        /// <param name="delimiter">필드 구분자입니다.</param>
-        /// <returns>파싱된 행 데이터 목록입니다.</returns>
+        /// <summary>Parses raw text with the given delimiter and returns the list of rows.</summary>
+        /// <param name="text">Raw text to parse.</param>
+        /// <param name="delimiter">Field delimiter.</param>
+        /// <returns>List of parsed row data.</returns>
         public static List<Dictionary<string, object>> Read(string text, char delimiter)
         {
-            // 이 경로는 예전부터 쓰던 것이라 대소문자를 가리던 동작을 그대로 둡니다.
-            Parse(text, delimiter, StringComparer.Ordinal,
-                  out _, out List<Dictionary<string, object>> cells, out _);
+            // 이 경로는 예전부터 쓰던 것이라 대소문자 구분도, 값에 따른 타입 추론도 그대로 둡니다.
+            // 부르는 쪽이 boxed int/float를 꺼내 쓰고 있을 수 있어, 동작을 조용히 바꾸지 않습니다.
+            Parse(text, delimiter, StringComparer.Ordinal, inferTypes: true,
+                  out _, out List<Dictionary<string, object>> cells, out _, out _);
             return cells;
         }
 
-        /// <summary>원문을 헤더까지 갖춘 표로 파싱합니다. 구분자는 내용으로 판별합니다.</summary>
-        /// <param name="text">분석할 원문입니다.</param>
-        /// <returns>파싱된 표입니다.</returns>
+        /// <summary>Parses raw text into a table complete with headers. The delimiter is detected from the content.</summary>
+        /// <param name="text">Raw text to parse.</param>
+        /// <returns>Parsed table.</returns>
         public static CsvTable ReadTable(string text) => ReadTable(text, DetectDelimiter(text));
 
-        /// <summary>원문을 지정 구분자로 파싱해 헤더까지 갖춘 표로 돌려줍니다.</summary>
-        /// <param name="text">분석할 원문입니다.</param>
-        /// <param name="delimiter">필드 구분자입니다.</param>
-        /// <returns>파싱된 표입니다. 내용이 없으면 빈 표입니다.</returns>
+        /// <summary>Parses raw text with the given delimiter and returns a table complete with headers.</summary>
+        /// <param name="text">Raw text to parse.</param>
+        /// <param name="delimiter">Field delimiter.</param>
+        /// <returns>Parsed table. Empty table when there is no content.</returns>
         public static CsvTable ReadTable(string text, char delimiter)
         {
             // 표 경로는 헤더를 대소문자 없이 찾습니다. MaxSpeed 열과 maxSpeed 필드가 붙어야 하기 때문입니다.
-            Parse(text, delimiter, StringComparer.OrdinalIgnoreCase, out List<string> header,
-                  out List<Dictionary<string, object>> cells, out List<int> lines);
+            // 값은 추론하지 않습니다 — 타입은 대상 필드가 정합니다.
+            Parse(text, delimiter, StringComparer.OrdinalIgnoreCase, inferTypes: false, out List<string> header,
+                  out List<Dictionary<string, object>> cells, out List<int> lines, out int openQuoteLine);
 
             var rows = new List<CsvRow>(cells.Count);
             for (int i = 0; i < cells.Count; i++) rows.Add(new CsvRow(cells[i], lines[i], header));
 
-            return new CsvTable(header, rows);
+            string defect = openQuoteLine > 0
+                ? $"The double quote opened on line {openQuoteLine} is never closed.\n"
+                + "  Everything after it falls into a single cell, so the remaining rows disappear from the table. "
+                + "Rows that disappear are not even counted as 'skipped', so they leave no trace — nothing was baked.\n"
+                + $"  Close or delete the quote on line {openQuoteLine}. "
+                + "To put a double quote inside a cell, write it twice (\"\")."
+                : null;
+
+            return new CsvTable(header, rows, defect);
         }
 
         /// <summary>
-        /// 파싱의 단일 경로입니다. 두 진입점이 같은 결과를 내도록 여기 하나만 둡니다.
+        /// The single parsing path. It lives here alone so that both entry points produce the same result.
         /// </summary>
-        /// <param name="text">분석할 원문입니다.</param>
-        /// <param name="delimiter">필드 구분자입니다.</param>
-        /// <param name="comparer">셀을 찾을 때 쓸 헤더 이름 비교자입니다.</param>
-        /// <param name="header">헤더 목록을 받습니다.</param>
-        /// <param name="cells">행별 헤더-값 사전을 받습니다. 값은 추론된 타입(int/float/string)입니다.</param>
-        /// <param name="lines">행별 원본 줄 번호를 받습니다. <paramref name="cells"/>와 같은 순서입니다.</param>
-        private static void Parse(string text, char delimiter, StringComparer comparer, out List<string> header,
-                                  out List<Dictionary<string, object>> cells, out List<int> lines)
+        /// <param name="text">Raw text to parse.</param>
+        /// <param name="delimiter">Field delimiter.</param>
+        /// <param name="comparer">Header name comparer used to look cells up.</param>
+        /// <param name="inferTypes">
+        /// Whether to decide a type from the value. <b>Only the legacy <see cref="Read(string)"/> path passes true.</b>
+        /// </param>
+        /// <param name="header">Receives the header list.</param>
+        /// <param name="cells">Receives one header-to-value dictionary per row. Values are the raw cell text (string).</param>
+        /// <param name="lines">Receives the source line number of each row, in the same order as <paramref name="cells"/>.</param>
+        /// <param name="openQuoteLine">
+        /// Receives the line where an unclosed double quote started. Zero when there is none.
+        /// </param>
+        private static void Parse(string text, char delimiter, StringComparer comparer, bool inferTypes,
+                                  out List<string> header,
+                                  out List<Dictionary<string, object>> cells, out List<int> lines,
+                                  out int openQuoteLine)
         {
             header = new List<string>();
             cells = new List<Dictionary<string, object>>();
             lines = new List<int>();
+            openQuoteLine = 0;
             if (string.IsNullOrEmpty(text)) return;
 
-            List<Record> records = ParseRecords(text, delimiter);
+            List<Record> records = ParseRecords(text, delimiter, out openQuoteLine);
             if (records.Count == 0) return;
 
             header = records[0].Fields;
@@ -97,17 +120,34 @@ namespace CsvPipeline
             {
                 List<string> values = records[r].Fields;
 
-                // 첫 열이 비어 있는 행은 건너뜁니다. (구분자만 있는 빈 줄 방어)
-                if (values.Count == 0 || string.IsNullOrEmpty(values[0])) continue;
+                // 모든 셀이 빈 행만 건너뜁니다. (구분자만 있는 빈 줄 방어)
+                // 첫 열로 판정하면, 식별자가 뒷 열에 있고 앞 열이 메모 칸인 표에서 그 칸이 빈 행이
+                // 통째로 사라집니다. 파서 단계에서 없어지므로 굽기 쪽은 그 행의 존재조차 모르고,
+                // 건너뜀으로도 세어지지 않아 어디에도 흔적이 남지 않습니다.
+                if (IsBlankRecord(values)) continue;
 
                 var entry = new Dictionary<string, object>(comparer);
                 for (int j = 0; j < header.Count && j < values.Count; j++)
                 {
-                    entry[header[j]] = InferType(values[j]);
+                    entry[header[j]] = inferTypes ? InferType(values[j]) : values[j];
                 }
                 cells.Add(entry);
                 lines.Add(records[r].LineNumber);
             }
+        }
+
+        /// <summary>
+        /// Checks whether a record has no filled cell at all. A single cell with data makes it a row.
+        /// </summary>
+        /// <param name="values">Fields of the record.</param>
+        /// <returns>True when it is an empty line that can be dropped.</returns>
+        private static bool IsBlankRecord(List<string> values)
+        {
+            for (int i = 0; i < values.Count; i++)
+            {
+                if (!string.IsNullOrEmpty(values[i])) return false;
+            }
+            return true;
         }
 
         // ====================================================================================================
@@ -115,10 +155,10 @@ namespace CsvPipeline
         // ====================================================================================================
 
         /// <summary>
-        /// 파일 확장자로 구분자를 정합니다. <c>.tsv</c>/<c>.tab</c>은 탭, 그 밖에는 쉼표입니다.
+        /// Picks the delimiter from the file extension. <c>.tsv</c>/<c>.tab</c> mean tab, everything else comma.
         /// </summary>
-        /// <param name="path">파일 경로입니다.</param>
-        /// <returns>쓸 구분자입니다.</returns>
+        /// <param name="path">File path.</param>
+        /// <returns>Delimiter to use.</returns>
         public static char DelimiterForPath(string path)
         {
             if (string.IsNullOrEmpty(path)) return Comma;
@@ -131,11 +171,11 @@ namespace CsvPipeline
         }
 
         /// <summary>
-        /// 헤더 줄에서 구분자를 추정합니다. 탭이 쉼표보다 많으면 탭입니다.
-        /// 확장자를 알 수 있으면 <see cref="DelimiterForPath"/>를 쓰는 편이 확실합니다.
+        /// Guesses the delimiter from the header line. More tabs than commas means tab.
+        /// When the extension is known, <see cref="DelimiterForPath"/> is the reliable choice.
         /// </summary>
-        /// <param name="text">분석할 원문입니다.</param>
-        /// <returns>추정한 구분자입니다.</returns>
+        /// <param name="text">Raw text to inspect.</param>
+        /// <returns>Guessed delimiter.</returns>
         public static char DetectDelimiter(string text)
         {
             if (string.IsNullOrEmpty(text)) return Comma;
@@ -155,7 +195,7 @@ namespace CsvPipeline
         // Parsing
         // ====================================================================================================
 
-        /// <summary>파싱된 레코드 하나입니다. 원본 줄 번호를 함께 들고 있습니다.</summary>
+        /// <summary>One parsed record. It carries the source line number along with the fields.</summary>
         private struct Record
         {
             public List<string> Fields;
@@ -163,12 +203,23 @@ namespace CsvPipeline
         }
 
         /// <summary>
-        /// 전체 텍스트를 레코드(행) 목록으로 분해합니다. 따옴표로 감싼 필드 내부의 구분자와 개행은 보존됩니다.
+        /// Breaks the whole text into records (rows). Delimiters and newlines inside quoted fields are preserved.
         /// </summary>
-        /// <param name="text">분해할 원문입니다.</param>
-        /// <param name="delimiter">필드 구분자입니다.</param>
-        /// <returns>행마다 필드 목록과 시작 줄 번호를 담은 목록입니다.</returns>
-        private static List<Record> ParseRecords(string text, char delimiter)
+        /// <param name="text">Raw text to break up.</param>
+        /// <param name="delimiter">Field delimiter.</param>
+        /// <returns>One entry per row, holding its field list and starting line number.</returns>
+        private static List<Record> ParseRecords(string text, char delimiter) => ParseRecords(text, delimiter, out _);
+
+        /// <summary>
+        /// Breaks the whole text into records and also reports <b>whether it ended with an unclosed quote</b>.
+        /// </summary>
+        /// <param name="text">Raw text to break up.</param>
+        /// <param name="delimiter">Field delimiter.</param>
+        /// <param name="unterminatedQuoteLine">
+        /// Receives the line where an unclosed quote started. Zero when there is none.
+        /// </param>
+        /// <returns>One entry per row, holding its field list and starting line number.</returns>
+        private static List<Record> ParseRecords(string text, char delimiter, out int unterminatedQuoteLine)
         {
             var records = new List<Record>();
             var current = new List<string>();
@@ -178,6 +229,7 @@ namespace CsvPipeline
             bool fieldStarted = false;  // 이 행에서 필드 파싱이 시작됐는지 (완전 빈 마지막 줄 무시용)
             int line = 1;               // 지금 읽고 있는 물리적 줄
             int recordLine = 1;         // 지금 모으는 레코드가 시작된 줄
+            int quoteOpenedLine = 0;    // 지금 열려 있는 따옴표가 시작된 줄
 
             // BOM 제거
             int start = 0;
@@ -215,6 +267,7 @@ namespace CsvPipeline
                 {
                     inQuotes = true;
                     fieldStarted = true;
+                    quoteOpenedLine = line;
                 }
                 else if (c == delimiter)
                 {
@@ -250,15 +303,16 @@ namespace CsvPipeline
                 records.Add(new Record { Fields = current, LineNumber = recordLine });
             }
 
+            unterminatedQuoteLine = inQuotes ? quoteOpenedLine : 0;
             return records;
         }
 
-        /// <summary>진행 중인 필드를 확정하고 레코드를 records에 추가한 뒤 상태를 초기화합니다.</summary>
-        /// <param name="records">레코드를 모으는 목록입니다.</param>
-        /// <param name="current">진행 중인 행의 필드 목록입니다.</param>
-        /// <param name="field">진행 중인 필드 버퍼입니다.</param>
-        /// <param name="fieldStarted">이 행에서 필드 파싱이 시작됐는지 여부입니다.</param>
-        /// <param name="lineNumber">이 레코드가 시작된 줄 번호입니다.</param>
+        /// <summary>Closes the field in progress, appends the record to records, and resets the state.</summary>
+        /// <param name="records">List that collects the records.</param>
+        /// <param name="current">Field list of the row in progress.</param>
+        /// <param name="field">Buffer of the field in progress.</param>
+        /// <param name="fieldStarted">Whether field parsing has started on this row.</param>
+        /// <param name="lineNumber">Line where this record started.</param>
         private static void EndRecord(List<Record> records, ref List<string> current, StringBuilder field,
                                       ref bool fieldStarted, int lineNumber)
         {
@@ -269,9 +323,16 @@ namespace CsvPipeline
             fieldStarted = false;
         }
 
-        /// <summary>문자열 셀을 int → float → string 순으로 자동 타입 변환합니다.</summary>
-        /// <param name="value">변환할 셀 원문입니다.</param>
-        /// <returns>추론된 타입의 값입니다.</returns>
+        /// <summary>
+        /// Converts a string cell automatically, trying int, then float, then string.
+        /// <para>
+        /// <b>For the legacy <see cref="Read(string)"/> path only.</b> This conversion loses data
+        /// irreversibly — <c>007</c> becomes <c>7</c>, <c>1.10</c> becomes <c>1.1</c>, and a 20-digit
+        /// identifier becomes <c>1E+20</c>. That is why the table path does not use it.
+        /// </para>
+        /// </summary>
+        /// <param name="value">Raw cell text to convert.</param>
+        /// <returns>Value in the inferred type.</returns>
         private static object InferType(string value)
         {
             if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int n)) return n;

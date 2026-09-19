@@ -21,6 +21,53 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # 배포본에 무엇이 실리는지 봅니다. 검사가 전부 통과해도 여기서 새면 상품이 망가집니다 —
+  # 내부 검토 문서에는 경쟁 도구 가격 비교와 자기 약점 목록이 들어 있습니다.
+  payload:
+    name: 배포본에 들어갈 것
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 저장소 받기
+        uses: actions/checkout@v4
+
+      - name: tarball 목록 뽑기
+        run: npm pack --dry-run 2>&1 | tee pack.txt
+
+      - name: 들어가면 안 되는 것이 없는지
+        run: |
+          # 하나라도 걸리면 실패합니다. 목록을 늘릴 때는 .npmignore 도 함께 고치십시오.
+          if grep -nE '(^|/)(\.ci|\.claude|\.github)/|\.gitattributes|\.gitignore|architecture-review|asset-store-readiness|hardening-research|ui-review' pack.txt; then
+            echo "::error::배포본에 들어가면 안 되는 것이 실려 있습니다. .npmignore 를 보십시오."
+            exit 1
+          fi
+          echo "깨끗합니다."
+
+      - name: 있어야 하는 것이 다 있는지
+        run: |
+          # 빠지면 심사 요건(문서·샘플)을 못 맞춥니다. 없는 것이 있는 것만큼 위험합니다.
+          required='
+          Documentation~/manual-en.md
+          Samples~/QuickStart/Quests.csv
+          Samples~/QuickStart/QuestData.cs
+          Samples~/QuickStart/README.md
+          Runtime/CsvAttributes.cs
+          LICENSE.md
+          CHANGELOG.md
+          package.json
+          '
+          missing=0
+          for f in $required; do
+            if ! grep -qF "$f" pack.txt; then
+              echo "::error::배포본에서 빠졌습니다: $f"
+              missing=1
+            fi
+          done
+          exit $missing
+
+      - name: 사람이 보는 자리가 전부 영문인지 · 자리 표시자가 없는지
+        run: python3 .ci/check-language.py
+
   editmode:
     name: EditMode ${{ matrix.unity }}
     runs-on: ubuntu-latest

@@ -1,12 +1,9 @@
 {
   "name": "com.toflaks.csv-pipeline",
-  "version": "0.13.2",
+  "version": "0.14.0",
   "displayName": "CSV Pipeline",
-  "description": "Bakes CSV rows into ScriptableObject assets on import, and optionally pulls those CSVs from Google Sheets. Editor-only; never included in player builds.",
+  "description": "Bakes CSV rows into ScriptableObject assets on import, and optionally pulls those CSVs from Google Sheets. All baking runs in the Editor. The only assembly that ships with your build is a small one holding the [CsvAsset] attribute declarations — no executable code, and it does not even reference UnityEngine.",
   "unity": "2022.3",
-  "documentationUrl": "https://github.com/toflaks98229/unity-csv-pipeline#readme",
-  "changelogUrl": "https://github.com/toflaks98229/unity-csv-pipeline/blob/main/CHANGELOG.md",
-  "licensesUrl": "https://github.com/toflaks98229/unity-csv-pipeline/blob/main/LICENSE.md",
   "keywords": [
     "csv",
     "scriptableobject",
@@ -15,14 +12,13 @@
     "editor"
   ],
   "author": {
-    "name": "toflaks98229",
-    "url": "https://github.com/toflaks98229"
+    "name": "toflaks98229"
   },
-  "license": "MIT",
+  "license": "SEE LICENSE IN LICENSE.md",
   "samples": [
     {
       "displayName": "Quick Start",
-      "description": "표 한 장이 ScriptableObject 에셋이 되는 최소 예제입니다. 임포터 코드가 없습니다.",
+      "description": "The smallest example of one table becoming ScriptableObject assets. There is no importer code.",
       "path": "Samples~/QuickStart"
     }
   ]

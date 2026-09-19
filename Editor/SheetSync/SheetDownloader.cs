@@ -4,26 +4,26 @@ using UnityEngine.Networking;
 
 namespace CsvPipeline
 {
-    /// <summary>한 번의 받기 결과입니다. 성공이면 <see cref="Text"/>가, 아니면 <see cref="Error"/>가 찹니다.</summary>
+    /// <summary>The result of one pull. On success <see cref="Text"/> is filled, otherwise <see cref="Error"/> is.</summary>
     public readonly struct SheetFetch
     {
-        /// <summary>받기와 검증을 모두 통과했는지 여부입니다.</summary>
+        /// <summary>Whether both the pull and the checks passed.</summary>
         public bool Ok { get; }
 
-        /// <summary>정규화된 표 원문입니다. 실패했으면 null입니다.</summary>
+        /// <summary>The normalized table text. Null on failure.</summary>
         public string Text { get; }
 
-        /// <summary>실패 사유입니다. 성공했으면 null입니다.</summary>
+        /// <summary>The reason for the failure. Null on success.</summary>
         public string Error { get; }
 
-        /// <summary>권한이 없어 로그인 페이지를 받은 경우인지 여부입니다.</summary>
+        /// <summary>Whether a login page came back because there is no access.</summary>
         public bool IsAccessDenied { get; }
 
-        /// <summary>결과를 만듭니다.</summary>
-        /// <param name="ok">통과 여부입니다.</param>
-        /// <param name="text">받은 원문입니다.</param>
-        /// <param name="error">실패 사유입니다.</param>
-        /// <param name="accessDenied">권한 문제인지 여부입니다.</param>
+        /// <summary>Builds a result.</summary>
+        /// <param name="ok">Whether it passed.</param>
+        /// <param name="text">The text that was pulled.</param>
+        /// <param name="error">The reason for the failure.</param>
+        /// <param name="accessDenied">Whether this is an access problem.</param>
         private SheetFetch(bool ok, string text, string error, bool accessDenied)
         {
             Ok = ok;
@@ -32,32 +32,35 @@ namespace CsvPipeline
             IsAccessDenied = accessDenied;
         }
 
-        /// <summary>성공 결과를 만듭니다.</summary>
-        /// <param name="text">정규화된 원문입니다.</param>
-        /// <returns>성공 결과입니다.</returns>
+        /// <summary>Builds a success result.</summary>
+        /// <param name="text">The normalized text.</param>
+        /// <returns>The success result.</returns>
         public static SheetFetch Success(string text) => new SheetFetch(true, text, null, false);
 
-        /// <summary>실패 결과를 만듭니다.</summary>
-        /// <param name="error">실패 사유입니다.</param>
-        /// <param name="accessDenied">권한 문제인지 여부입니다.</param>
-        /// <returns>실패 결과입니다.</returns>
+        /// <summary>Builds a failure result.</summary>
+        /// <param name="error">The reason for the failure.</param>
+        /// <param name="accessDenied">Whether this is an access problem.</param>
+        /// <returns>The failure result.</returns>
         public static SheetFetch Failure(string error, bool accessDenied = false)
             => new SheetFetch(false, null, error, accessDenied);
     }
 
     /// <summary>
-    /// 시트 본문을 받아 오고, <b>표가 맞는지까지 확인해</b> 돌려줍니다.
-    /// 받기·인증·검증이 여기 모여 있어 부르는 쪽은 성공/실패만 다루면 됩니다.
+    /// Pulls the sheet body and returns it, <b>after checking that it really is a table</b>.
+    /// Pulling, authentication, and checking all live here, so callers only deal with success or failure.
     /// </summary>
     public static class SheetDownloader
     {
+        /// <summary>How long (in seconds) to wait for one pull. Generous enough for a large table, but not unlimited.</summary>
+        private const int TimeoutSeconds = 60;
+
         /// <summary>
-        /// 설정이 가리키는 탭을 받아 검증합니다.
-        /// 시트가 공개돼 있지 않으면 구글은 오류가 아니라 <b>로그인 HTML을 200으로</b> 돌려줍니다.
-        /// 이것을 통과시키면 표가 HTML로 덮이고 파이프라인이 에셋을 망가뜨리므로 여기서 막습니다.
+        /// Pulls the tab the settings point at and checks it.
+        /// When the sheet is not public, Google does not return an error — it returns <b>login HTML with a 200</b>.
+        /// Letting that through overwrites the table with HTML and the pipeline then wrecks the assets, so it is stopped here.
         /// </summary>
-        /// <param name="url">받아올 주소입니다.</param>
-        /// <returns>정규화까지 마친 결과입니다.</returns>
+        /// <param name="url">Address to pull from.</param>
+        /// <returns>The result, normalization included.</returns>
         public static async Task<SheetFetch> FetchAsync(string url)
         {
             string body;
@@ -67,28 +70,28 @@ namespace CsvPipeline
             }
             catch (Exception e)
             {
-                return SheetFetch.Failure($"받기 실패: {e.Message}");
+                return SheetFetch.Failure($"Pull failed: {e.Message}");
             }
 
             if (SheetDiff.LooksLikeHtml(body))
             {
-                return SheetFetch.Failure("CSV 대신 HTML이 왔습니다. 시트에 접근할 권한이 없다는 뜻입니다.", true);
+                return SheetFetch.Failure("HTML came back instead of CSV. That means there is no permission to access the sheet.", true);
             }
 
             if (string.IsNullOrWhiteSpace(body))
             {
-                return SheetFetch.Failure("시트가 비어 있습니다. (탭이 비어 있는지 확인)");
+                return SheetFetch.Failure("The sheet is empty. (Check whether the tab is empty)");
             }
 
             return SheetFetch.Success(SheetDiff.Normalize(body));
         }
 
         /// <summary>
-        /// URL의 본문을 문자열로 받아옵니다.
-        /// 서비스 계정 키가 설정돼 있으면 액세스 토큰을 붙여 <b>비공개 시트</b>도 읽습니다.
+        /// Pulls the body of a URL as a string.
+        /// When a service account key is configured, it attaches an access token and reads <b>private sheets</b> too.
         /// </summary>
-        /// <param name="url">받아올 주소입니다.</param>
-        /// <returns>응답 본문입니다.</returns>
+        /// <param name="url">Address to pull from.</param>
+        /// <returns>The response body.</returns>
         public static async Task<string> GetTextAsync(string url)
         {
             string token = GoogleServiceAccount.IsConfigured
@@ -98,14 +101,18 @@ namespace CsvPipeline
             return await GetTextAsync(url, token);
         }
 
-        /// <summary>URL의 본문을 받아옵니다. 토큰이 있으면 Authorization 헤더에 실습니다.</summary>
-        /// <param name="url">받아올 주소입니다.</param>
-        /// <param name="accessToken">쓸 액세스 토큰입니다. null이면 붙이지 않습니다.</param>
-        /// <returns>응답 본문입니다.</returns>
+        /// <summary>Pulls the body of a URL. A token, when present, rides in the Authorization header.</summary>
+        /// <param name="url">Address to pull from.</param>
+        /// <param name="accessToken">The access token to use. Nothing is attached when null.</param>
+        /// <returns>The response body.</returns>
         public static Task<string> GetTextAsync(string url, string accessToken)
         {
             var completion = new TaskCompletionSource<string>();
             UnityWebRequest request = UnityWebRequest.Get(url);
+
+            // 시한을 걸지 않으면 응답이 오지 않는 동안 이 작업이 끝나지 않습니다. 그러면 동기화가
+            // '도는 중'으로 남아 다음 받기가 통째로 막히고, 에디터를 다시 켜기 전에는 풀리지 않습니다.
+            request.timeout = TimeoutSeconds;
 
             if (!string.IsNullOrEmpty(accessToken))
             {
@@ -135,15 +142,15 @@ namespace CsvPipeline
             return completion.Task;
         }
 
-        /// <summary>권한 실패에 붙일 안내 문구입니다.</summary>
-        /// <returns>안내 문구입니다.</returns>
+        /// <summary>The hint to attach to an access failure.</summary>
+        /// <returns>The hint text.</returns>
         public static string AccessDeniedHint()
         {
-            return "  공개 시트로 쓰려면: 공유 → 링크가 있는 모든 사용자 → 뷰어\n"
-                 + "  비공개로 두려면: Project Settings ▸ CSV Pipeline 에 서비스 계정 키를 지정하고,\n"
-                 + "  그 계정 이메일에게 시트를 공유하십시오."
+            return "  To use it as a public sheet: Share → Anyone with the link → Viewer\n"
+                 + "  To keep it private: set a service account key in Project Settings ▸ CSV Pipeline,\n"
+                 + "  and share the sheet with that account's email."
                  + (GoogleServiceAccount.IsConfigured
-                     ? "\n  (키는 설정돼 있습니다. 시트 공유 대상을 확인하십시오)"
+                     ? "\n  (The key is configured. Check who the sheet is shared with)"
                      : string.Empty);
         }
     }

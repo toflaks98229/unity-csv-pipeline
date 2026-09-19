@@ -5,61 +5,61 @@ using UnityEngine;
 namespace CsvPipeline
 {
     /// <summary>
-    /// <b>한 행 = 한 에셋</b> 임포터입니다. 행의 식별자를 파일명으로 삼아 에셋을 만들거나 갱신하고,
-    /// 표에서 사라진 행의 에셋을 정리합니다.
+    /// <b>One row = one asset</b> importer. It takes the row identifier as the file name to create or update an asset,
+    /// and cleans up the assets of rows that vanished from the table.
     /// </summary>
-    /// <typeparam name="T">구울 ScriptableObject 타입입니다.</typeparam>
+    /// <typeparam name="T">ScriptableObject type to bake.</typeparam>
     public abstract class CsvRowImporter<T> : CsvImportDefinition where T : ScriptableObject
     {
-        /// <summary>산출물이 놓이는 폴더입니다.</summary>
+        /// <summary>Folder the output assets go into.</summary>
         protected abstract override string OutputFolder { get; }
 
-        /// <summary>행에서 에셋 식별자(=파일명)를 뽑습니다. 비어 있으면 그 행을 건너뜁니다.</summary>
-        /// <param name="row">읽을 행입니다.</param>
-        /// <returns>식별자입니다.</returns>
+        /// <summary>Pulls the asset identifier (= file name) out of a row. An empty one skips that row.</summary>
+        /// <param name="row">Row to read.</param>
+        /// <returns>The identifier.</returns>
         protected abstract string GetId(CsvRow row);
 
         /// <summary>
-        /// 행의 값을 에셋에 기록합니다. <paramref name="serialized"/>에 <see cref="SoBaker"/>로 쓰십시오.
+        /// Writes the row values into the asset. Write to <paramref name="serialized"/> with <see cref="SoBaker"/>.
         /// </summary>
-        /// <param name="row">읽을 행입니다.</param>
-        /// <param name="asset">대상 에셋입니다.</param>
-        /// <param name="serialized">대상 에셋의 직렬화 객체입니다. 호출 뒤 자동으로 적용됩니다.</param>
+        /// <param name="row">Row to read.</param>
+        /// <param name="asset">Target asset.</param>
+        /// <param name="serialized">Serialized object of the target asset. It is applied automatically after the call.</param>
         protected abstract void Bake(CsvRow row, T asset, SerializedObject serialized);
 
-        /// <summary>산출물 정리에 쓰는 에셋 검색 필터입니다.</summary>
+        /// <summary>Asset search filter used for output cleanup.</summary>
         protected virtual string TypeFilter => $"t:{typeof(T).Name}";
 
         /// <summary>
-        /// 정리 대조를 에셋 이름이 아니라 경로로 할지 여부입니다.
-        /// 파생 타입별로 하위 폴더가 갈리는 등 이름만으로 대조할 수 없을 때 켭니다.
+        /// Whether cleanup matches against the asset path instead of the asset name.
+        /// Turn it on when the name alone cannot match, such as when derived types split into subfolders.
         /// </summary>
         protected virtual bool ReconcileByPath => false;
 
-        /// <summary>표에서 사라진 산출물을 정리합니다. 대조 방식은 <see cref="ReconcileByPath"/>가 정합니다.</summary>
+        /// <summary>Cleans up output assets that vanished from the table. <see cref="ReconcileByPath"/> settles how to match.</summary>
         protected sealed override CsvReconcileMode ReconcileMode
             => ReconcileByPath ? CsvReconcileMode.ByPath : CsvReconcileMode.ByName;
 
-        /// <summary>정리 대상을 찾을 검색 필터입니다.</summary>
+        /// <summary>Search filter that finds the cleanup candidates.</summary>
         protected sealed override string ReconcileTypeFilter => TypeFilter;
 
-        /// <summary>식별자로부터 에셋 경로를 만듭니다.</summary>
-        /// <param name="id">행의 식별자입니다.</param>
-        /// <returns>에셋 경로입니다.</returns>
+        /// <summary>Builds the asset path from an identifier.</summary>
+        /// <param name="id">Row identifier.</param>
+        /// <returns>The asset path.</returns>
         protected virtual string AssetPathFor(string id) => $"{OutputFolder}/{id}.asset";
 
         /// <summary>
-        /// 에셋을 로드하거나 만듭니다. 행의 값에 따라 만들 구체 타입이 갈릴 때 재정의하십시오.
+        /// Loads or creates the asset. Override it when the concrete type to create depends on the row values.
         /// </summary>
-        /// <param name="id">행의 식별자입니다.</param>
-        /// <param name="row">읽을 행입니다.</param>
-        /// <returns>로드하거나 만든 에셋입니다. null이면 그 행을 건너뜁니다.</returns>
+        /// <param name="id">Row identifier.</param>
+        /// <param name="row">Row to read.</param>
+        /// <returns>The asset that was loaded or created. Null skips that row.</returns>
         protected virtual T CreateOrLoad(string id, CsvRow row)
             => CsvAssetPipeline.CreateOrLoad<T>(AssetPathFor(id));
 
-        /// <summary>행마다 에셋을 굽고, 표에서 사라진 산출물을 정리합니다.</summary>
-        /// <param name="table">파싱된 표입니다.</param>
-        /// <param name="report">건수와 문제를 기록할 리포트입니다.</param>
+        /// <summary>Bakes an asset per row and cleans up output assets that vanished from the table.</summary>
+        /// <param name="table">Parsed table.</param>
+        /// <param name="report">Report that records counts and problems.</param>
         protected override void Process(CsvTable table, CsvImportReport report)
         {
             CsvAssetPipeline.EnsureFolder(OutputFolder);
@@ -67,10 +67,10 @@ namespace CsvPipeline
             BakeEach(table.Rows, report, BakeOne);
         }
 
-        /// <summary>행 하나를 에셋으로 굽습니다.</summary>
-        /// <param name="row">읽을 행입니다.</param>
-        /// <param name="report">문제를 기록할 리포트입니다.</param>
-        /// <returns>구운 결과입니다.</returns>
+        /// <summary>Bakes one row into an asset.</summary>
+        /// <param name="row">Row to read.</param>
+        /// <param name="report">Report that records problems.</param>
+        /// <returns>The bake result.</returns>
         private CsvBakeOutcome BakeOne(CsvRow row, CsvImportReport report)
         {
             string id = GetId(row);
@@ -94,20 +94,25 @@ namespace CsvPipeline
 
             var serialized = new SerializedObject(asset);
             Bake(row, asset, serialized);
-            serialized.ApplyModifiedPropertiesWithoutUndo();
-            CsvAssets.Current.MarkDirty(asset);
+            bool changed = serialized.ApplyModifiedPropertiesWithoutUndo();
+
+            // 값이 하나도 달라지지 않았으면 더럽히지 않습니다. 더럽힌 에셋은 굽기 끝의
+            // SaveAssets 가 전부 다시 씁니다 — 3,000행 표에서 한 칸만 고쳐도 3,000개를 다시
+            // 쓰던 자리입니다. ApplyModifiedPropertiesWithoutUndo 는 실제로 바뀐 것이 있을 때만
+            // true 를 돌려주므로, 그 답을 그대로 씁니다.
+            if (isNew || changed) CsvAssets.Current.MarkDirty(asset);
             CsvAssetPipeline.FlushIfCreated(asset, isNew);
 
             return CsvBakeOutcome.Baked(isNew, id, CsvAssets.Current.PathOf(asset), row.LineNumber);
         }
 
-        /// <summary>행마다 만들지 갱신할지, 그리고 무엇이 사라질지를 계산합니다. 쓰지는 않습니다.</summary>
-        /// <param name="table">파싱된 표입니다.</param>
-        /// <param name="plan">채울 계획입니다.</param>
+        /// <summary>Computes, per row, whether it is created or updated, and what disappears. It writes nothing.</summary>
+        /// <param name="table">Parsed table.</param>
+        /// <param name="plan">Plan to fill in.</param>
         protected override void BuildPlan(CsvTable table, CsvImportPlan plan)
         {
-            var validNames = new HashSet<string>();
-            var validPaths = new HashSet<string>();
+            HashSet<string> validNames = NewKeySet();
+            HashSet<string> validPaths = NewKeySet();
             var claims = new CsvIdClaims();
 
             foreach (CsvRow row in table.Rows)

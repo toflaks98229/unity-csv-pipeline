@@ -5,31 +5,31 @@ using UnityEngine;
 namespace CsvPipeline
 {
     /// <summary>
-    /// <b>표 전체 = 프로젝트에 하나뿐인 에셋</b> 임포터입니다. (등급표·밸런싱 표처럼 산출물이 단일 에셋인 경우)
-    /// 에셋을 새로 만들지 않습니다. 새로 만들면 GUID가 다른 빈 에셋이 생기고,
-    /// 씬·프리팹의 인스펙터 배선은 옛 에셋을 계속 가리켜 조용히 어긋나기 때문입니다.
+    /// <b>The whole table = the one asset in the project</b> importer. (when the output is a single asset, like a tier table or a balancing table)
+    /// It never creates the asset. Creating one would produce an empty asset with a different GUID,
+    /// while the inspector wiring in scenes and prefabs would keep pointing at the old asset and drift silently.
     /// </summary>
-    /// <typeparam name="T">갱신할 ScriptableObject 타입입니다.</typeparam>
+    /// <typeparam name="T">ScriptableObject type to update.</typeparam>
     public abstract class CsvSingletonImporter<T> : CsvImportDefinition where T : ScriptableObject
     {
-        /// <summary>대상 에셋 조회에 쓰는 에셋 검색 필터입니다.</summary>
+        /// <summary>Asset search filter used to look up the target asset.</summary>
         protected virtual string TypeFilter => $"t:{typeof(T).Name}";
 
-        /// <summary>대상 에셋이 없을 때 경고에 덧붙일 안내입니다. (어디서 만들 수 있는지)</summary>
+        /// <summary>Hint appended to the warning when the target asset is missing. (where it can be created)</summary>
         protected virtual string MissingAssetHint => null;
 
         /// <summary>
-        /// 한 행의 값을 단일 에셋에 기록합니다.
+        /// Writes the values of one row into the single asset.
         /// </summary>
-        /// <param name="row">읽을 행입니다.</param>
-        /// <param name="asset">대상 에셋입니다.</param>
-        /// <param name="serialized">대상 에셋의 직렬화 객체입니다. 전 행 처리 후 한 번에 적용됩니다.</param>
-        /// <returns>이 행을 실제로 반영했으면 true입니다. (로그의 적용 행 수 집계용)</returns>
+        /// <param name="row">Row to read.</param>
+        /// <param name="asset">Target asset.</param>
+        /// <param name="serialized">Serialized object of the target asset. It is applied once after every row is processed.</param>
+        /// <returns>True when this row was actually applied. (counts the applied rows in the log)</returns>
         protected abstract bool BakeRow(CsvRow row, T asset, SerializedObject serialized);
 
-        /// <summary>단일 에셋을 찾아 전 행을 반영합니다.</summary>
-        /// <param name="table">파싱된 표입니다.</param>
-        /// <param name="report">건수와 문제를 기록할 리포트입니다.</param>
+        /// <summary>Finds the single asset and applies every row to it.</summary>
+        /// <param name="table">Parsed table.</param>
+        /// <param name="report">Report that records counts and problems.</param>
         protected override void Process(CsvTable table, CsvImportReport report)
         {
             T asset = FindSingle(report);
@@ -44,15 +44,20 @@ namespace CsvPipeline
 
             // 취소돼도 여기까지 읽은 값은 반영합니다. 이 임포터는 지우지 않으므로 절반만 반영돼도
             // 잃는 것이 없고, 되돌리면 이미 구운 행까지 버리게 됩니다.
-            serialized.ApplyModifiedPropertiesWithoutUndo();
-            CsvAssets.Current.MarkDirty(asset);
+            bool changed = serialized.ApplyModifiedPropertiesWithoutUndo();
+
+            // 값이 하나도 달라지지 않았으면 더럽히지 않습니다. 더럽힌 에셋은 굽기 끝의
+            // SaveAssets 가 전부 다시 씁니다 — 3,000행 표에서 한 칸만 고쳐도 3,000개를 다시
+            // 쓰던 자리입니다. ApplyModifiedPropertiesWithoutUndo 는 실제로 바뀐 것이 있을 때만
+            // true 를 돌려주므로, 그 답을 그대로 씁니다.
+            if (changed) CsvAssets.Current.MarkDirty(asset);
         }
 
         /// <summary>
-        /// 어느 에셋이 갱신될지 계산합니다. 이 임포터는 만들지도 지우지도 않습니다.
+        /// Computes which asset is updated. This importer neither creates nor deletes.
         /// </summary>
-        /// <param name="table">파싱된 표입니다.</param>
-        /// <param name="plan">채울 계획입니다.</param>
+        /// <param name="table">Parsed table.</param>
+        /// <param name="plan">Plan to fill in.</param>
         protected override void BuildPlan(CsvTable table, CsvImportPlan plan)
         {
             List<string> paths = SortedPaths();
@@ -76,9 +81,9 @@ namespace CsvPipeline
             plan.Add(CsvChangeKind.Update, paths[0], 0, $"All {table.Count} rows are applied to this single asset.");
         }
 
-        /// <summary>프로젝트에서 대상 에셋을 찾습니다. 없으면 오류로 보고하고 null입니다.</summary>
-        /// <param name="report">결과를 기록할 리포트입니다.</param>
-        /// <returns>찾은 에셋이거나 null입니다.</returns>
+        /// <summary>Finds the target asset in the project. Reports an error and returns null when there is none.</summary>
+        /// <param name="report">Report that records the results.</param>
+        /// <returns>The asset that was found, or null.</returns>
         private T FindSingle(CsvImportReport report)
         {
             var found = new List<T>();
@@ -109,10 +114,10 @@ namespace CsvPipeline
         }
 
         /// <summary>
-        /// 대상 타입의 에셋 경로들을 경로순으로 돌려줍니다.
-        /// 검색 순서는 보장되지 않아, 여럿일 때 매번 다른 에셋을 갱신하지 않도록 정렬로 고정합니다.
+        /// Returns the asset paths of the target type in path order.
+        /// Search order is not guaranteed, so sorting pins it down and keeps a different asset from being updated each run when there are several.
         /// </summary>
-        /// <returns>정렬된 에셋 경로들입니다.</returns>
+        /// <returns>The sorted asset paths.</returns>
         private List<string> SortedPaths()
         {
             var paths = new List<string>(CsvAssets.Current.FindPaths(TypeFilter));

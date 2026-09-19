@@ -4,17 +4,17 @@ using UnityEditor;
 namespace CsvPipeline
 {
     /// <summary>
-    /// 설정 에셋이 생기거나 사라지거나 옮겨지면 들고 있던 것을 버립니다.
-    /// <b>이것이 없으면 캐시가 낡습니다.</b> 설정을 지웠는데 화면은 계속 있다고 말하거나,
-    /// 새로 만들었는데 기본값으로 도는 상태가 됩니다.
+    /// Drops what is held whenever a settings asset appears, disappears, or moves.
+    /// <b>Without this the cache goes stale.</b> You delete the settings and the page keeps saying they are there,
+    /// or you create them and the pipeline keeps running on defaults.
     /// </summary>
     internal sealed class CsvPipelineSettingsHook : AssetPostprocessor
     {
-        /// <summary>에셋 변화 통지에서 설정 에셋이 관련됐을 때만 캐시를 버립니다.</summary>
-        /// <param name="imported">임포트된 에셋 경로들입니다.</param>
-        /// <param name="deleted">삭제된 에셋 경로들입니다.</param>
-        /// <param name="moved">이동된 에셋의 새 경로들입니다.</param>
-        /// <param name="movedFrom">이동된 에셋의 이전 경로들입니다.</param>
+        /// <summary>Drops the cache only when an asset change notification involves a settings asset.</summary>
+        /// <param name="imported">Paths of the imported assets.</param>
+        /// <param name="deleted">Paths of the deleted assets.</param>
+        /// <param name="moved">New paths of the moved assets.</param>
+        /// <param name="movedFrom">Previous paths of the moved assets.</param>
         private static void OnPostprocessAllAssets(string[] imported, string[] deleted, string[] moved, string[] movedFrom)
         {
             // 삭제와 이동은 경로만 남습니다. 그 자리에 무엇이 있었는지 물어볼 수 없으므로
@@ -29,13 +29,13 @@ namespace CsvPipeline
             }
         }
 
-        /// <summary>목록에 설정 에셋일 수 있는 경로가 있는지 여부입니다.</summary>
-        /// <param name="paths">검사할 경로들입니다.</param>
+        /// <summary>Whether the list contains a path that could be a settings asset.</summary>
+        /// <param name="paths">Paths to inspect.</param>
         /// <param name="checkType">
-        /// 지금 그 자리에 있는 에셋의 타입까지 확인할지 여부입니다.
-        /// 삭제·이동 전 경로에는 확인할 대상이 없어 false 로 부릅니다.
+        /// Whether to also check the type of the asset sitting at that path right now.
+        /// A deleted path, or the path an asset moved away from, has nothing left to check, so it is called with false.
         /// </param>
-        /// <returns>관련됐으면 true입니다.</returns>
+        /// <returns>true when a settings asset is involved.</returns>
         private static bool TouchesSettings(string[] paths, bool checkType)
         {
             if (paths == null) return false;

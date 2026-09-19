@@ -4,30 +4,32 @@ using System.Text;
 namespace CsvPipeline
 {
     /// <summary>
-    /// 마지막으로 받아 기록한 내용의 사본을 관리합니다.
-    /// 이 사본이 있어야 <b>"시트가 바뀐 것"과 "로컬을 손으로 고친 것"을 구분</b>할 수 있습니다.
-    /// 버전 관리 대상이 아닌 곳에 두므로, 없어도 동작은 하고 경고만 사라집니다.
+    /// Keeps a snapshot of what the last pull wrote.
+    /// This snapshot is what lets the tool <b>tell "the sheet changed" apart from "someone edited
+    /// the local file by hand"</b>.
+    /// It lives outside version control, so everything still works without it — only the warning goes away.
     /// </summary>
     public static class SheetSnapshot
     {
-        /// <summary>사본들이 놓이는 폴더입니다.</summary>
+        /// <summary>Folder that holds the snapshots.</summary>
         private static string Root => CsvPipelineSettings.Instance.SnapshotFolder;
 
-        /// <summary>사본 폴더가 있게 합니다.</summary>
+        /// <summary>Makes sure the snapshot folder exists.</summary>
         public static void EnsureFolder() => Directory.CreateDirectory(Root);
 
-        /// <summary>지정 표의 사본 경로입니다.</summary>
-        /// <param name="csvFileName">표 파일 이름입니다.</param>
-        /// <returns>사본 파일 경로입니다.</returns>
+        /// <summary>Snapshot path for the given table.</summary>
+        /// <param name="csvFileName">Table file name.</param>
+        /// <returns>Path to the snapshot file.</returns>
         public static string PathFor(string csvFileName) => Path.Combine(Root, csvFileName);
 
         /// <summary>
-        /// 마지막 동기화 이후 로컬이 직접 수정됐는지 여부입니다.
-        /// 사본이 없으면 <b>판단할 수 없으므로 false</b>입니다. 없는 것을 수정으로 몰지 않습니다.
+        /// Whether the local file was edited directly since the last sync.
+        /// With no snapshot there is <b>nothing to judge against, so this is false</b>.
+        /// A missing snapshot is not treated as an edit.
         /// </summary>
-        /// <param name="csvFileName">표 파일 이름입니다.</param>
-        /// <param name="localText">지금 로컬 파일의 정규화된 내용입니다.</param>
-        /// <returns>수정된 흔적이 있으면 true입니다.</returns>
+        /// <param name="csvFileName">Table file name.</param>
+        /// <param name="localText">Normalized content of the local file right now.</param>
+        /// <returns>True when there are signs of an edit.</returns>
         public static bool DivergedFromLocal(string csvFileName, string localText)
         {
             string path = PathFor(csvFileName);
@@ -36,9 +38,17 @@ namespace CsvPipeline
             return SheetDiff.Normalize(File.ReadAllText(path)) != localText;
         }
 
-        /// <summary>이번에 받은 내용을 사본으로 남깁니다.</summary>
-        /// <param name="csvFileName">표 파일 이름입니다.</param>
-        /// <param name="text">기록할 내용입니다.</param>
+        /// <summary>
+        /// Writes what this pull fetched as the snapshot.
+        /// <para>
+        /// <b>This is the one place that never writes a BOM.</b> The file lives under Library and nobody
+        /// opens it — the next pull reads it only to decide whether the local file was edited. If it
+        /// followed the setting instead, flipping the BOM setting would flag every table as
+        /// "edited locally" the moment it changed.
+        /// </para>
+        /// </summary>
+        /// <param name="csvFileName">Table file name.</param>
+        /// <param name="text">Content to write.</param>
         public static void Write(string csvFileName, string text)
             => File.WriteAllText(PathFor(csvFileName), text, new UTF8Encoding(false));
     }

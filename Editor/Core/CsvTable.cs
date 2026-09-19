@@ -4,45 +4,96 @@ using System.Collections.Generic;
 namespace CsvPipeline
 {
     /// <summary>
-    /// 파싱된 표 하나입니다. 행뿐 아니라 <b>헤더</b>를 함께 들고 있어,
-    /// 열 이름 오타를 "빈 셀"로 흘려보내지 않고 잡아낼 수 있습니다.
+    /// One parsed table. It carries the <b>headers</b> alongside the rows,
+    /// so a typo in a column name is caught instead of slipping through as an "empty cell".
     /// </summary>
     public sealed class CsvTable
     {
         private readonly HashSet<string> _headerSet;
 
-        /// <summary>표를 만듭니다.</summary>
-        /// <param name="headers">헤더(열 이름) 목록입니다.</param>
-        /// <param name="rows">데이터 행들입니다.</param>
-        public CsvTable(IReadOnlyList<string> headers, IReadOnlyList<CsvRow> rows)
+        /// <summary>Builds a table.</summary>
+        /// <param name="headers">List of headers (column names).</param>
+        /// <param name="rows">Data rows.</param>
+        /// <param name="defect">
+        /// A parsing problem that makes the table untrustworthy. Null when there is none.
+        /// </param>
+        public CsvTable(IReadOnlyList<string> headers, IReadOnlyList<CsvRow> rows, string defect = null)
         {
             Headers = headers ?? Array.Empty<string>();
             Rows = rows ?? Array.Empty<CsvRow>();
+            Defect = defect;
 
             // 헤더는 대소문자를 가리지 않습니다. 표는 PascalCase(MaxSpeed), 필드는 camelCase(maxSpeed)로
             // 적히는 것이 보통이라, 가려서 비교하면 자동 연결이 하나도 붙지 않습니다.
             _headerSet = new HashSet<string>(Headers, StringComparer.OrdinalIgnoreCase);
+
+            DuplicateHeaders = FindDuplicateHeaders(Headers);
         }
 
-        /// <summary>헤더(열 이름) 목록입니다. 표에 적힌 순서를 지킵니다.</summary>
+        /// <summary>
+        /// A parsing problem that makes this table untrustworthy. Null when there is none.
+        /// <para>
+        /// Today there is only one: an <b>unclosed double quote</b>. That single character swallows every
+        /// following row into one field, so the table keeps only the front part and the remaining rows
+        /// <b>do not even exist</b>. Baking reads them as "rows that disappeared from the table" and deletes
+        /// their output assets. That kind of loss is not even counted as skipped and leaves no trace anywhere,
+        /// so the table is treated as unreadable instead.
+        /// </para>
+        /// </summary>
+        public string Defect { get; }
+
+        /// <summary>
+        /// Columns whose name appears more than once. Empty list when there are none.
+        /// <para>
+        /// The row dictionary stores values by name, so <b>a later column overwrites an earlier one.</b>
+        /// Whatever was written in the earlier column survives nowhere, and there was no warning. Duplicating
+        /// a column in a sheet produces this shape immediately, and so does a name that differs only in case —
+        /// header matching ignores case.
+        /// </para>
+        /// </summary>
+        public IReadOnlyList<string> DuplicateHeaders { get; }
+
+        /// <summary>Finds columns whose name appears more than once. Keeps the order of appearance and reports each name once.</summary>
+        /// <param name="headers">Header list to inspect.</param>
+        /// <returns>Names of the duplicated columns.</returns>
+        private static IReadOnlyList<string> FindDuplicateHeaders(IReadOnlyList<string> headers)
+        {
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var reported = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            List<string> duplicates = null;
+
+            for (int i = 0; i < headers.Count; i++)
+            {
+                string name = headers[i];
+                if (string.IsNullOrEmpty(name)) continue;
+
+                if (seen.Add(name) || !reported.Add(name)) continue;
+
+                duplicates = duplicates ?? new List<string>();
+                duplicates.Add(name);
+            }
+            return (IReadOnlyList<string>)duplicates ?? Array.Empty<string>();
+        }
+
+        /// <summary>List of headers (column names). Keeps the order written in the table.</summary>
         public IReadOnlyList<string> Headers { get; }
 
-        /// <summary>데이터 행들입니다. 헤더 행은 포함하지 않습니다.</summary>
+        /// <summary>Data rows. The header row is not included.</summary>
         public IReadOnlyList<CsvRow> Rows { get; }
 
-        /// <summary>데이터 행 수입니다.</summary>
+        /// <summary>Number of data rows.</summary>
         public int Count => Rows.Count;
 
-        /// <summary>표에 지정 열이 있는지 여부입니다. 대소문자는 가리지 않습니다.</summary>
-        /// <param name="column">확인할 열 이름입니다.</param>
-        /// <returns>열이 있으면 true입니다.</returns>
+        /// <summary>Whether the table has the given column. Case is ignored.</summary>
+        /// <param name="column">Column name to check.</param>
+        /// <returns>True when the column is present.</returns>
         public bool HasColumn(string column) => !string.IsNullOrEmpty(column) && _headerSet.Contains(column);
 
         /// <summary>
-        /// 요구한 열 중 표에 없는 것들을 돌려줍니다.
+        /// Returns the required columns that the table does not have.
         /// </summary>
-        /// <param name="required">있어야 하는 열 이름들입니다.</param>
-        /// <returns>빠진 열 이름들입니다. 전부 있으면 빈 목록입니다.</returns>
+        /// <param name="required">Names of the columns that must be present.</param>
+        /// <returns>Names of the missing columns. Empty list when all are present.</returns>
         public List<string> FindMissingColumns(IEnumerable<string> required)
         {
             var missing = new List<string>();
@@ -56,11 +107,11 @@ namespace CsvPipeline
         }
 
         /// <summary>
-        /// 표에 적힌 그대로의 열 이름을 돌려줍니다. 대소문자가 달라도 찾습니다.
-        /// 내보낼 때 사람이 적어 둔 표기(<c>MaxSpeed</c>)를 필드 이름(<c>maxSpeed</c>)으로 바꿔 버리지 않으려고 씁니다.
+        /// Returns the column name exactly as written in the table. It matches even when the case differs.
+        /// Exporting uses it so the spelling a person wrote (<c>MaxSpeed</c>) is not replaced by the field name (<c>maxSpeed</c>).
         /// </summary>
-        /// <param name="column">찾을 열 이름입니다.</param>
-        /// <returns>표에 적힌 이름이거나, 없으면 null입니다.</returns>
+        /// <param name="column">Column name to look up.</param>
+        /// <returns>The name as written in the table, or null when it is absent.</returns>
         public string ResolveHeader(string column)
         {
             if (string.IsNullOrEmpty(column)) return null;
@@ -73,11 +124,11 @@ namespace CsvPipeline
         }
 
         /// <summary>
-        /// 이름이 거의 같은 열을 찾습니다. 오타 안내에 씁니다.
-        /// 대소문자는 이미 <see cref="HasColumn"/>이 흡수하므로, 여기서는 공백·밑줄·하이픈 차이를 봅니다.
+        /// Finds a column whose name is nearly the same. Used to point out typos.
+        /// <see cref="HasColumn"/> already absorbs case, so this looks at differences in spaces, underscores, and hyphens.
         /// </summary>
-        /// <param name="column">찾던 열 이름입니다.</param>
-        /// <returns>거의 같은 실제 열 이름이거나, 없으면 null입니다.</returns>
+        /// <param name="column">Column name that was looked for.</param>
+        /// <returns>The real column name that is nearly the same, or null when there is none.</returns>
         public string FindSimilarColumn(string column)
         {
             if (string.IsNullOrEmpty(column)) return null;
@@ -92,9 +143,9 @@ namespace CsvPipeline
             return null;
         }
 
-        /// <summary>비교용으로 이름에서 구분 기호를 걷어내고 소문자로 만듭니다.</summary>
-        /// <param name="name">정규화할 이름입니다.</param>
-        /// <returns>정규화된 이름입니다.</returns>
+        /// <summary>Strips separator characters from a name and lowercases it, for comparison.</summary>
+        /// <param name="name">Name to normalize.</param>
+        /// <returns>Normalized name.</returns>
         private static string Squash(string name)
         {
             if (string.IsNullOrEmpty(name)) return string.Empty;

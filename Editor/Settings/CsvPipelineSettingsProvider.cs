@@ -4,19 +4,19 @@ using UnityEngine;
 namespace CsvPipeline
 {
     /// <summary>
-    /// Project Settings 창에 파이프라인 설정 화면을 붙입니다.
-    /// 설정 에셋이 없으면 어떤 기본값으로 돌고 있는지 보여 주고, 그 자리에서 만들 수 있게 합니다.
+    /// Adds the pipeline settings page to the Project Settings window.
+    /// When there is no settings asset, it shows which defaults the pipeline is running on and lets you create one right there.
     /// </summary>
     internal static class CsvPipelineSettingsProvider
     {
-        /// <summary>설정 에셋이 없을 때 만들 기본 위치입니다.</summary>
+        /// <summary>Default location to create the settings asset at when there is none.</summary>
         private const string DefaultAssetPath = "Assets/CsvPipelineSettings.asset";
 
-        /// <summary>설정 에셋을 편집하는 직렬화 객체입니다. 화면이 열려 있는 동안만 유지합니다.</summary>
+        /// <summary>Serialized object that edits the settings asset. It is kept only while the page is open.</summary>
         private static SerializedObject _serialized;
 
-        /// <summary>Project Settings에 "CSV Pipeline" 항목을 등록합니다.</summary>
-        /// <returns>등록할 설정 화면입니다.</returns>
+        /// <summary>Registers the "CSV Pipeline" entry in Project Settings.</summary>
+        /// <returns>The settings page to register.</returns>
         [SettingsProvider]
         public static SettingsProvider Create()
         {
@@ -32,7 +32,7 @@ namespace CsvPipeline
             };
         }
 
-        /// <summary>들고 있던 것을 버려 다음 그리기에서 다시 찾게 합니다.</summary>
+        /// <summary>Drops what is held so the next draw searches again.</summary>
         private static void Reset()
         {
             _serialized = null;
@@ -40,7 +40,7 @@ namespace CsvPipeline
             GoogleServiceAccount.InvalidateToken();
         }
 
-        /// <summary>설정 화면 본문을 그립니다.</summary>
+        /// <summary>Draws the body of the settings page.</summary>
         private static void DrawGui()
         {
             EditorGUILayout.Space();
@@ -76,25 +76,25 @@ namespace CsvPipeline
             DrawResolvedPaths(settings);
 
             EditorGUILayout.Space();
-            if (GUILayout.Button("설정 에셋 선택", GUILayout.Width(160)))
+            if (GUILayout.Button("Select Settings Asset", GUILayout.Width(160)))
             {
                 Selection.activeObject = settings;
                 EditorGUIUtility.PingObject(settings);
             }
         }
 
-        /// <summary>설정 에셋이 없을 때의 안내와 생성 버튼을 그립니다.</summary>
+        /// <summary>Draws the notice and the create button shown when there is no settings asset.</summary>
         private static void DrawMissingState()
         {
             EditorGUILayout.HelpBox(
-                "설정 에셋이 없어 기본값으로 동작합니다.\n"
-                + "CSV 폴더가 기본값과 다르면 에셋을 만들어 경로를 지정하십시오.",
+                "There is no settings asset, so the pipeline runs on defaults.\n"
+                + "If your CSV folder differs from the default, create an asset and point it at the right path.",
                 MessageType.Info);
 
             DrawResolvedPaths(CsvPipelineSettings.Instance);
 
             EditorGUILayout.Space();
-            if (!GUILayout.Button($"{DefaultAssetPath} 에 설정 에셋 만들기", GUILayout.Width(320))) return;
+            if (!GUILayout.Button($"Create Settings Asset at {DefaultAssetPath}", GUILayout.Width(320))) return;
 
             CsvPipelineSettings created = CsvPipelineSettings.CreateAsset(DefaultAssetPath);
             _serialized = null;
@@ -103,38 +103,38 @@ namespace CsvPipeline
             GUIUtility.ExitGUI();   // 이번 프레임의 남은 그리기는 사라진 화면을 향합니다.
         }
 
-        /// <summary>실제로 쓰이는 경로들을 읽기 전용으로 보여 줍니다. (빈 칸의 폴백까지 확인 가능)</summary>
-        /// <param name="settings">표시할 설정입니다.</param>
+        /// <summary>Shows the paths actually in use, read-only. (This makes the fallback for an empty field visible too.)</summary>
+        /// <param name="settings">Settings to display.</param>
         private static void DrawResolvedPaths(CsvPipelineSettings settings)
         {
-            EditorGUILayout.LabelField("실제 적용되는 경로", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("Paths in Effect", EditorStyles.boldLabel);
 
             using (new EditorGUI.DisabledScope(true))
             {
-                EditorGUILayout.TextField("CSV 루트", settings.CsvRootFolder);
-                EditorGUILayout.TextField("시트 연동 설정", settings.SheetSyncSettingsFolder);
-                EditorGUILayout.TextField("스냅숏", settings.SnapshotFolder);
+                EditorGUILayout.TextField("CSV Root", settings.CsvRootFolder);
+                EditorGUILayout.TextField("Sheet Sync Settings", settings.SheetSyncSettingsFolder);
+                EditorGUILayout.TextField("Snapshot", settings.SnapshotFolder);
             }
 
             EditorGUILayout.Space();
-            EditorGUILayout.LabelField("비공개 시트 인증", EditorStyles.boldLabel);
+            EditorGUILayout.LabelField("Private Sheet Authentication", EditorStyles.boldLabel);
 
             if (string.IsNullOrEmpty(settings.ServiceAccountKeyPath))
             {
                 EditorGUILayout.HelpBox(
-                    "서비스 계정 키가 없습니다. '링크가 있는 모든 사용자 · 뷰어'로 공개된 시트만 받아옵니다.",
+                    "No service account key. Only sheets shared as 'Anyone with the link - Viewer' are pulled.",
                     MessageType.None);
             }
             else if (GoogleServiceAccount.IsConfigured)
             {
                 EditorGUILayout.HelpBox(
-                    "서비스 계정 키를 찾았습니다. 시트를 그 계정 이메일과 공유하면 비공개 상태로 받아올 수 있습니다.",
+                    "Service account key found. Share a sheet with that account's email and you can pull it while it stays private.",
                     MessageType.Info);
             }
             else
             {
                 EditorGUILayout.HelpBox(
-                    $"지정한 경로에 키 파일이 없습니다: {settings.ServiceAccountKeyPath}",
+                    $"No key file at the given path: {settings.ServiceAccountKeyPath}",
                     MessageType.Warning);
             }
         }

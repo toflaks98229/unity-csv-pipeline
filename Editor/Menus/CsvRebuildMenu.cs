@@ -7,43 +7,43 @@ using UnityEngine;
 namespace CsvPipeline
 {
     /// <summary>
-    /// 관리 대상 CSV를 강제 재임포트해 모든 CSV → ScriptableObject 파이프라인을 일괄 재생성하는 메뉴입니다.
-    /// AssetPostprocessor 임포터는 CSV가 "변경"될 때만 발화하므로, 파이프라인 수정 후 산출물 동일성 검증이나
-    /// 최초 시드 CSV의 일괄 생성에 사용합니다.
+    /// Menu that force-reimports the managed CSV files and rebuilds every CSV → ScriptableObject pipeline in one pass.
+    /// The AssetPostprocessor importers only fire when a CSV "changes", so use this to verify that the output assets
+    /// stay identical after you edit the pipeline, or to bake a first batch of seed CSV files at once.
     /// </summary>
     public static class CsvRebuildMenu
     {
-        /// <summary>로그 접두 태그입니다.</summary>
+        /// <summary>Tag prefixed to the log.</summary>
         private const string TAG = "[CsvRebuild]";
 
         /// <summary>
-        /// 전체 재빌드가 끝난 뒤 불립니다. 구운 에셋을 모아 카탈로그를 다시 채우는 등,
-        /// 임포터 하나로는 할 수 없는 프로젝트별 마무리 작업을 붙이는 자리입니다.
+        /// Raised after a full rebuild finishes. This is where you hook the project-specific finishing work that a
+        /// single importer cannot do, such as gathering the baked assets to refill a catalog.
         /// </summary>
         public static event Action AfterRebuildAll;
 
-        /// <summary>CSV 루트의 모든 CSV를 강제 재임포트합니다.</summary>
-        [MenuItem("Tools/CSV Pipeline/전체 다시 굽기", false, 20)]
+        /// <summary>Force-reimports every CSV under the CSV root.</summary>
+        [MenuItem("Tools/CSV Pipeline/Rebuild All Tables", false, 20)]
         public static void RebuildAllMenu()
         {
             int count = RebuildAll();
             if (count < 0) return;
 
-            Debug.Log($"{TAG} {count}개 CSV를 강제 재임포트했습니다. (Console의 임포터 로그 확인)");
+            Debug.Log($"{TAG} Force-reimported {count} CSV files. (see the importer logs in the Console)");
         }
 
         /// <summary>
-        /// CSV 루트의 모든 CSV를 강제 재임포트합니다.
+        /// Force-reimports every CSV under the CSV root.
         /// </summary>
-        /// <returns>재임포트한 CSV 개수이거나, 루트 폴더를 찾지 못했으면 -1입니다.</returns>
+        /// <returns>Number of CSV files reimported, or -1 when the root folder was not found.</returns>
         public static int RebuildAll()
         {
             string csvRoot = CsvPipelineSettings.Instance.CsvRootFolder;
             if (!AssetDatabase.IsValidFolder(csvRoot))
             {
                 Debug.LogWarning(
-                    $"{TAG} CSV 루트 폴더를 찾지 못했습니다: {csvRoot}\n"
-                    + "Project Settings ▸ CSV Pipeline 에서 실제 폴더를 지정하십시오.");
+                    $"{TAG} Could not find the CSV root folder: {csvRoot}\n"
+                    + "Point it at the real folder in Project Settings ▸ CSV Pipeline.");
                 return -1;
             }
 

@@ -6,32 +6,32 @@ using System.Linq;
 namespace CsvPipeline
 {
     /// <summary>
-    /// 고정 파일명 기반 임포터가 공유하는 라이프사이클 보일러플레이트 유틸입니다.
-    /// (파일 매칭·터치 감지·읽기)
+    /// Lifecycle boilerplate shared by importers that key off a fixed file name.
+    /// (File matching, touch detection, reading)
     /// </summary>
     public static class CsvImportUtil
     {
-        /// <summary>표로 다루는 확장자들입니다.</summary>
+        /// <summary>Extensions treated as tables.</summary>
         public static readonly string[] TableExtensions = { ".csv", ".tsv", ".tab" };
 
-        /// <summary>경로의 파일명이 지정 파일명과 일치하는지(대소문자 무시) 여부입니다.</summary>
-        /// <param name="path">검사할 에셋 경로입니다.</param>
-        /// <param name="fileName">비교할 파일 이름입니다.</param>
-        /// <returns>일치하면 true입니다.</returns>
+        /// <summary>Whether the file name in the path matches the given file name, ignoring case.</summary>
+        /// <param name="path">Asset path to check.</param>
+        /// <param name="fileName">File name to compare against.</param>
+        /// <returns>True when they match.</returns>
         public static bool IsFile(string path, string fileName)
             => Path.GetFileName(path).Equals(fileName, StringComparison.OrdinalIgnoreCase);
 
-        /// <summary>이번 임포트/이동 목록에 지정 파일이 포함됐는지 여부입니다.</summary>
-        /// <param name="imported">임포트된 에셋 경로들입니다.</param>
-        /// <param name="moved">이동된 에셋의 새 경로들입니다.</param>
-        /// <param name="fileName">찾을 파일 이름입니다.</param>
-        /// <returns>포함됐으면 true입니다.</returns>
+        /// <summary>Whether this import/move batch contains the given file.</summary>
+        /// <param name="imported">Paths of the imported assets.</param>
+        /// <param name="moved">New paths of the moved assets.</param>
+        /// <param name="fileName">File name to look for.</param>
+        /// <returns>True when it is included.</returns>
         public static bool Touched(string[] imported, string[] moved, string fileName)
             => imported.Concat(moved).Any(p => IsFile(p, fileName));
 
-        /// <summary>경로의 확장자가 표로 다루는 것인지 여부입니다.</summary>
-        /// <param name="path">검사할 경로입니다.</param>
-        /// <returns>표 확장자면 true입니다.</returns>
+        /// <summary>Whether the path has an extension that is treated as a table.</summary>
+        /// <param name="path">Path to check.</param>
+        /// <returns>True for a table extension.</returns>
         public static bool IsTableFile(string path)
         {
             if (string.IsNullOrEmpty(path)) return false;
@@ -45,29 +45,77 @@ namespace CsvPipeline
         }
 
         /// <summary>
-        /// 표 파일의 원문을 읽습니다.
-        /// TextAsset으로 먼저 읽고, 실패하면 디스크에서 직접 읽습니다.
-        /// Unity가 <c>.tsv</c>를 TextAsset으로 임포트하지 않기 때문에 폴백이 필요합니다.
+        /// Reads the raw text of a table file.
+        /// It tries the TextAsset first and reads straight from disk when that fails.
+        /// The fallback is needed because Unity does not import <c>.tsv</c> as a TextAsset.
         /// </summary>
-        /// <param name="assetPath">읽을 에셋 경로입니다.</param>
-        /// <returns>원문이거나, 읽지 못했으면 null입니다.</returns>
+        /// <param name="assetPath">Asset path to read.</param>
+        /// <returns>The raw text, or null when it could not be read.</returns>
         public static string ReadText(string assetPath) => CsvAssets.Current.ReadText(assetPath);
 
-        /// <summary>표 파일을 읽어 헤더까지 갖춘 표로 파싱합니다. 구분자는 확장자로 정합니다.</summary>
-        /// <param name="assetPath">읽을 에셋 경로입니다.</param>
-        /// <returns>파싱된 표이거나, 읽을 것이 없으면 null입니다.</returns>
-        public static CsvTable ReadTable(string assetPath)
+        /// <summary>Reads a table file and parses it into a table complete with headers. The delimiter comes from the extension.</summary>
+        /// <param name="assetPath">Asset path to read.</param>
+        /// <returns>The parsed table, or null when there is nothing to read.</returns>
+        public static CsvTable ReadTable(string assetPath) => ReadTable(assetPath, out _, out _);
+
+        /// <summary>
+        /// Reads a table file and parses it into a table, and reports <b>why</b> when no table came out.
+        /// <para>
+        /// Three different things all produce null — the file is missing, the characters cannot be decoded,
+        /// or there are no data rows. Lumping the three into one sentence gives people guidance they cannot act
+        /// on. Telling someone with a wrongly encoded table only "the table could not be read" leaves no way to
+        /// know what to fix.
+        /// </para>
+        /// <para>
+        /// <paramref name="unreadable"/> separates <b>what needs fixing</b> from <b>what is not filled in yet</b>.
+        /// A table with no rows is authoring that has not started, so it is not an error, but a table whose
+        /// characters cannot be decoded is a problem a person must fix and has to stand out.
+        /// </para>
+        /// </summary>
+        /// <param name="assetPath">Asset path to read.</param>
+        /// <param name="problem">Receives the reason no table came out. Null when a table did.</param>
+        /// <param name="unreadable">Receives true when the file could not be opened or decoded.</param>
+        /// <returns>The parsed table, or null when there is nothing to read.</returns>
+        public static CsvTable ReadTable(string assetPath, out string problem, out bool unreadable)
         {
-            string text = ReadText(assetPath);
-            if (string.IsNullOrEmpty(text)) return null;
+            unreadable = false;
+            string text = CsvAssets.Current.ReadText(assetPath, out problem);
+
+            if (problem != null)
+            {
+                unreadable = true;
+                return null;
+            }
+
+            if (string.IsNullOrEmpty(text))
+            {
+                problem = "The table file is empty or cannot be found.";
+                return null;
+            }
 
             CsvTable table = CsvReader.ReadTable(text, CsvReader.DelimiterForPath(assetPath));
-            return table.Count == 0 ? null : table;
+
+            // 파싱이 표를 내놓았어도 믿을 수 없는 경우가 있습니다. 닫히지 않은 따옴표가 뒤의 행을
+            // 통째로 삼키면 앞부분만 남은 '멀쩡해 보이는' 표가 나오고, 굽기는 사라진 행의 산출물을
+            // 지웁니다. 읽지 '못한' 것으로 다뤄 굽기를 아예 멈춥니다.
+            if (table.Defect != null)
+            {
+                unreadable = true;
+                problem = table.Defect;
+                return null;
+            }
+
+            if (table.Count > 0) return table;
+
+            problem = table.Headers.Count > 0
+                ? "There is only a header line and no data rows."
+                : "The table has no content at all.";
+            return null;
         }
 
-        /// <summary>표 파일을 읽어 행 목록으로 파싱합니다. 로드 실패/빈 파일이면 null.</summary>
-        /// <param name="csvPath">읽을 에셋 경로입니다.</param>
-        /// <returns>파싱된 행 목록이거나, 읽을 것이 없으면 null입니다.</returns>
+        /// <summary>Reads a table file and parses it into a list of rows. Null when loading fails or the file is empty.</summary>
+        /// <param name="csvPath">Asset path to read.</param>
+        /// <returns>The parsed list of rows, or null when there is nothing to read.</returns>
         public static List<Dictionary<string, object>> ReadRows(string csvPath)
         {
             string text = ReadText(csvPath);

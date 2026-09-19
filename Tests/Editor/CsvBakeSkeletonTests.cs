@@ -112,6 +112,32 @@ namespace CsvPipeline.Tests
             Assert.AreEqual(0, report.Deleted, report.Summary());
             Assert.IsNotNull(_assets.Get<WidgetData>(obsolete));
         }
+
+        /// <summary>
+        /// 이 표와 관계없는 통지에는 <b>산출물 폴더를 묻지 않습니다.</b>
+        /// 폴더를 선언에 적지 않은 임포터에게 그 물음은 프로젝트 전체 검색인데,
+        /// 이 통지는 프로젝트의 <b>모든</b> 임포트마다 오고 대부분 이 표와 무관합니다.
+        /// </summary>
+        [Test]
+        public void 관계없는_통지에는_산출물_폴더를_묻지_않는다()
+        {
+            var importer = new CountingImporter();
+
+            importer.Execute(new[] { "Assets/무관한.png" }, new string[0], new string[0]);
+
+            Assert.AreEqual(0, importer.OutputFolderReads, "값싼 판정을 먼저 해야 합니다.");
+        }
+
+        /// <summary>원본이 지워진 통지에는 경고할 자리를 알아야 하므로 그때는 묻습니다.</summary>
+        [Test]
+        public void 원본이_지워지면_산출물_폴더를_묻는다()
+        {
+            var importer = new CountingImporter();
+
+            importer.Execute(new string[0], new[] { "Assets/CSV/CsvPipelineTests_Counting.csv" }, new string[0]);
+
+            Assert.AreEqual(1, importer.OutputFolderReads);
+        }
     }
 
     /// <summary>
@@ -172,5 +198,31 @@ namespace CsvPipeline.Tests
 
             return CsvBakeOutcome.Baked(created, id);
         }
+    }
+
+    /// <summary>
+    /// 산출물 폴더를 몇 번 물었는지 세는 임포터입니다.
+    /// 폴더를 선언에 적지 않아 그 물음이 <b>비싼</b> 임포터를 흉내 냅니다.
+    /// </summary>
+    internal sealed class CountingImporter : CsvImportDefinition
+    {
+        /// <summary>산출물 폴더를 물어본 횟수입니다.</summary>
+        public int OutputFolderReads { get; private set; }
+
+        protected override string FileName => "CsvPipelineTests_Counting.csv";
+
+        protected override string OutputFolder
+        {
+            get
+            {
+                OutputFolderReads++;
+                return "Assets/Memory/Counting";
+            }
+        }
+
+        /// <summary>이 검사는 굽기까지 가지 않습니다.</summary>
+        /// <param name="table">파싱된 표입니다.</param>
+        /// <param name="report">건수와 문제를 기록할 리포트입니다.</param>
+        protected override void Process(CsvTable table, CsvImportReport report) { }
     }
 }

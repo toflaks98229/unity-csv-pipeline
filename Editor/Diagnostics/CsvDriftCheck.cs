@@ -5,51 +5,51 @@ using UnityEngine;
 
 namespace CsvPipeline
 {
-    /// <summary>표 하나가 산출물과 어긋난 까닭입니다.</summary>
+    /// <summary>Why one table drifted from its output assets.</summary>
     public enum CsvDriftKind
     {
-        /// <summary>어긋나지 않았습니다.</summary>
+        /// <summary>Nothing drifted.</summary>
         None,
 
-        /// <summary>지금 구우면 산출물이 달라집니다. 표를 고치고 굽기를 잊은 자리입니다.</summary>
+        /// <summary>Baking now would change the output assets. Someone edited the table and forgot to bake.</summary>
         Changed,
 
-        /// <summary>표 자체에 손볼 것이 있습니다. (겹친 식별자·쓸 수 없는 이름 등)</summary>
+        /// <summary>The table itself has something to fix. (duplicate identifiers, unusable names, and so on)</summary>
         Problem,
 
-        /// <summary>계획을 세우지 못했습니다. 어긋났는지조차 알 수 없습니다.</summary>
+        /// <summary>No plan could be built. We cannot even tell whether it drifted.</summary>
         Unreadable,
     }
 
-    /// <summary>어긋난 표 하나입니다.</summary>
+    /// <summary>One drifted table.</summary>
     public sealed class CsvDriftEntry
     {
-        /// <summary>어긋난 표 하나를 만듭니다.</summary>
-        /// <param name="plan">그 표의 계획입니다.</param>
-        /// <param name="kind">어긋난 까닭입니다.</param>
+        /// <summary>Creates one drifted table.</summary>
+        /// <param name="plan">Plan for that table.</param>
+        /// <param name="kind">Why it drifted.</param>
         public CsvDriftEntry(CsvImportPlan plan, CsvDriftKind kind)
         {
             Plan = plan;
             Kind = kind;
         }
 
-        /// <summary>그 표의 계획입니다.</summary>
+        /// <summary>Plan for that table.</summary>
         public CsvImportPlan Plan { get; }
 
-        /// <summary>어긋난 까닭입니다.</summary>
+        /// <summary>Why it drifted.</summary>
         public CsvDriftKind Kind { get; }
 
-        /// <summary>왜 어긋났는지 한 줄로 설명합니다.</summary>
-        /// <returns>설명 문자열입니다.</returns>
+        /// <summary>Explains in one line why it drifted.</summary>
+        /// <returns>Explanation string.</returns>
         public string Reason()
         {
             switch (Kind)
             {
                 case CsvDriftKind.Unreadable:
-                    return Plan.Unsupported ?? "계획을 세우지 못했습니다.";
+                    return Plan.Unsupported ?? "Could not build a plan.";
 
                 case CsvDriftKind.Problem:
-                    return Plan.Issues.Count > 0 ? Plan.Issues[0].Message : "손볼 것이 있습니다.";
+                    return Plan.Issues.Count > 0 ? Plan.Issues[0].Message : "There is something to fix.";
 
                 default:
                     return Plan.Summary();
@@ -57,40 +57,40 @@ namespace CsvPipeline
         }
     }
 
-    /// <summary>표와 산출물이 어긋나는지 살펴본 결과입니다.</summary>
+    /// <summary>Result of checking whether tables drifted from their output assets.</summary>
     public sealed class CsvDriftReport
     {
         private readonly List<CsvDriftEntry> _drifted = new List<CsvDriftEntry>();
 
-        /// <summary>살펴본 표의 수입니다.</summary>
+        /// <summary>Number of tables checked.</summary>
         public int Checked { get; private set; }
 
-        /// <summary>어긋난 표들입니다.</summary>
+        /// <summary>Tables that drifted.</summary>
         public IReadOnlyList<CsvDriftEntry> Drifted => _drifted;
 
-        /// <summary>어긋난 것이 하나도 없으면 true입니다.</summary>
+        /// <summary>True when nothing drifted.</summary>
         public bool IsClean => _drifted.Count == 0;
 
-        /// <summary>배치 실행이 답으로 쓸 종료 코드입니다. 0이면 깨끗합니다.</summary>
+        /// <summary>Exit code a batch run answers with. 0 means clean.</summary>
         public int ExitCode => IsClean ? 0 : 1;
 
-        /// <summary>살펴본 표 하나를 셉니다.</summary>
-        /// <param name="plan">그 표의 계획입니다.</param>
-        /// <param name="kind">어긋난 까닭입니다. <see cref="CsvDriftKind.None"/>이면 세기만 합니다.</param>
+        /// <summary>Counts one checked table.</summary>
+        /// <param name="plan">Plan for that table.</param>
+        /// <param name="kind">Why it drifted. <see cref="CsvDriftKind.None"/> only counts it.</param>
         public void Add(CsvImportPlan plan, CsvDriftKind kind)
         {
             Checked++;
             if (kind != CsvDriftKind.None) _drifted.Add(new CsvDriftEntry(plan, kind));
         }
 
-        /// <summary>사람이 읽을 결과입니다. CI 로그에 그대로 남습니다.</summary>
-        /// <returns>여러 줄의 보고입니다.</returns>
+        /// <summary>Human-readable result. It lands in the CI log as is.</summary>
+        /// <returns>A multi-line report.</returns>
         public string Describe()
         {
-            if (IsClean) return $"표 {Checked}장이 모두 산출물과 일치합니다.";
+            if (IsClean) return $"All {Checked} tables match their output assets.";
 
             var text = new StringBuilder();
-            text.Append($"표 {Checked}장 중 {_drifted.Count}장이 산출물과 어긋납니다.");
+            text.Append($"{_drifted.Count} of {Checked} tables drifted from their output assets.");
 
             foreach (CsvDriftEntry entry in _drifted)
             {
@@ -101,43 +101,43 @@ namespace CsvPipeline
             }
 
             text.AppendLine();
-            text.Append("표를 고치고 굽기를 잊었거나, 구운 결과를 커밋하지 않았을 수 있습니다.");
+            text.Append("Someone may have edited a table and forgotten to bake, or left the baked output uncommitted.");
             return text.ToString();
         }
 
-        /// <summary>까닭의 한 마디입니다.</summary>
-        /// <param name="kind">표기할 까닭입니다.</param>
-        /// <returns>표기 문자열입니다.</returns>
+        /// <summary>One word for the reason.</summary>
+        /// <param name="kind">Reason to label.</param>
+        /// <returns>Label string.</returns>
         private static string Word(CsvDriftKind kind)
         {
             switch (kind)
             {
-                case CsvDriftKind.Problem: return "문제";
-                case CsvDriftKind.Unreadable: return "못 읽음";
-                default: return "안 구움";
+                case CsvDriftKind.Problem: return "problem";
+                case CsvDriftKind.Unreadable: return "no plan";
+                default: return "unbaked";
             }
         }
     }
 
     /// <summary>
-    /// 표와 산출물이 어긋나는지 확인합니다. <b>아무것도 쓰지 않습니다.</b>
+    /// Checks whether tables drifted from their output assets. <b>It writes nothing.</b>
     /// <para>
-    /// 표를 고치고 굽기를 잊은 채 커밋하면, 그 값은 git 이력에는 있는데 게임에는 없습니다.
-    /// 사람은 알아채기 어렵습니다 — 표 파일이 바뀐 것은 diff 에 보이지만, 산출물이 안 바뀐 것은
-    /// <b>diff 에 보이지 않기</b> 때문입니다.
+    /// When someone edits a table, forgets to bake, and commits, the value lives in the git history but not in
+    /// the game. People rarely catch it — the changed table file shows up in the diff, but the output assets
+    /// staying unchanged <b>does not show up in the diff</b> at all.
     /// </para>
     /// <para>
-    /// 계획(<see cref="CsvImportDefinition.Plan"/>)이 이미 "지금 구우면 무엇이 달라지는가"를
-    /// 계산하고 있으므로, 그 답이 "아무것도"인지만 물으면 됩니다.
+    /// The plan (<see cref="CsvImportDefinition.Plan"/>) already computes "what changes if I bake now",
+    /// so all we ask is whether that answer is "nothing".
     /// </para>
     /// </summary>
     public static class CsvDriftCheck
     {
-        /// <summary>로그에 붙는 접두 태그입니다.</summary>
+        /// <summary>Tag prefixed to the log.</summary>
         private const string Tag = "[CSV Pipeline]";
 
         /// <summary>
-        /// 배치 실행 진입점입니다. 어긋난 것이 있으면 <b>0이 아닌 종료 코드</b>로 답합니다.
+        /// Entry point for a batch run. Answers with a <b>non-zero exit code</b> when anything drifted.
         /// </summary>
         /// <example>
         /// <code>
@@ -154,8 +154,8 @@ namespace CsvPipeline
             EditorApplication.Exit(report.ExitCode);
         }
 
-        /// <summary>메뉴에서 부르는 확인입니다. 종료하지 않고 로그만 남깁니다.</summary>
-        [MenuItem("Tools/CSV Pipeline/표와 산출물이 어긋나는지 확인", false, 22)]
+        /// <summary>The check invoked from the menu. It logs instead of exiting.</summary>
+        [MenuItem("Tools/CSV Pipeline/Check for Drift", false, 22)]
         public static void CheckMenu()
         {
             CsvDriftReport report = Inspect();
@@ -165,13 +165,13 @@ namespace CsvPipeline
         }
 
         /// <summary>
-        /// 등록된 표를 모두 살펴 어긋난 것을 모읍니다.
+        /// Checks every registered table and collects the ones that drifted.
         /// </summary>
         /// <param name="definitions">
-        /// 살펴볼 임포터들입니다. null이면 프로젝트에서 모두 찾습니다.
-        /// <b>검사에서 넘길 수 있게 열어 두었습니다</b> — 전부 찾으면 검사용 픽스처까지 딸려 옵니다.
+        /// Importers to check. null finds them all in the project.
+        /// <b>Left open so tests can pass their own in</b> — finding them all drags the test fixtures along.
         /// </param>
-        /// <returns>살펴본 결과입니다.</returns>
+        /// <returns>Result of the check.</returns>
         public static CsvDriftReport Inspect(IEnumerable<CsvImportDefinition> definitions = null)
         {
             var report = new CsvDriftReport();
@@ -185,8 +185,8 @@ namespace CsvPipeline
             return report;
         }
 
-        /// <summary>프로젝트의 임포터를 모두 찾습니다. 속성으로 선언한 표까지 함께 봅니다.</summary>
-        /// <returns>찾은 임포터들입니다.</returns>
+        /// <summary>Finds every importer in the project, including tables declared through the attribute.</summary>
+        /// <returns>Importers found.</returns>
         private static IEnumerable<CsvImportDefinition> DiscoverAll()
         {
             var found = new List<CsvImportDefinition>(CsvImportDefinition.DiscoverAll());
@@ -196,11 +196,11 @@ namespace CsvPipeline
         }
 
         /// <summary>
-        /// 계획 하나가 어긋났는지 가립니다. <b>판정은 창의 것과 같습니다</b> —
-        /// 화면에서 "바뀌는 것 없음"으로 보이는 표가 CI 에서는 실패하면, 둘 중 하나는 거짓말입니다.
+        /// Decides whether one plan drifted. <b>The verdict is the same one the window uses</b> —
+        /// if a table reads as "no changes" on screen but fails in CI, one of the two is lying.
         /// </summary>
-        /// <param name="plan">볼 계획입니다.</param>
-        /// <returns>어긋난 까닭입니다.</returns>
+        /// <param name="plan">Plan to look at.</param>
+        /// <returns>Why it drifted.</returns>
         public static CsvDriftKind KindOf(CsvImportPlan plan)
         {
             switch (CsvPlanStatus.Of(plan))

@@ -115,8 +115,8 @@ namespace CsvPipeline.Tests
             string difference = SheetDiff.Describe(Table("A,갑,10"), "Id,Name,MP\nA,갑,10\n");
 
             Assert.IsNotNull(difference);
-            StringAssert.Contains("헤더가 다릅니다", difference);
-            StringAssert.DoesNotContain("로컬에만 있는 행", difference);
+            StringAssert.Contains("Headers differ", difference);
+            StringAssert.DoesNotContain("Rows only in local", difference);
         }
 
         /// <summary>로컬에만 있는 행은 받으면 사라집니다. 그 사실이 목록에 나와야 합니다.</summary>
@@ -125,8 +125,8 @@ namespace CsvPipeline.Tests
         {
             string difference = SheetDiff.Describe(Table("A,갑,10", "B,을,20"), Table("A,갑,10"));
 
-            StringAssert.Contains("경고 없이 덮입니다", difference);
-            StringAssert.Contains("로컬에만 있는 행 1: B", difference);
+            StringAssert.Contains("overwrites without warning", difference);
+            StringAssert.Contains("Rows only in local 1: B", difference);
         }
 
         /// <summary>시트에만 있는 행과 값이 바뀐 행을 나누어 셉니다.</summary>
@@ -137,9 +137,9 @@ namespace CsvPipeline.Tests
                 Table("A,갑,10", "B,을,20"),
                 Table("A,갑,99", "B,을,20", "C,병,30"));
 
-            StringAssert.Contains("시트에만 있는 행 1: C", difference);
-            StringAssert.Contains("값이 다른 행 1: A", difference);
-            StringAssert.DoesNotContain("로컬에만 있는 행", difference);
+            StringAssert.Contains("Rows only in sheet 1: C", difference);
+            StringAssert.Contains("Rows with different values 1: A", difference);
+            StringAssert.DoesNotContain("Rows only in local", difference);
         }
 
         /// <summary>
@@ -155,10 +155,10 @@ namespace CsvPipeline.Tests
                 Table("A,병,30", "A,을,20"));
 
             Assert.IsNotNull(difference);
-            StringAssert.Contains("행 대조로는 차이를 찾지 못했습니다", difference);
+            StringAssert.Contains("Matching row by row found no difference", difference);
 
             // 색인 크기를 쓰면 양쪽 다 1이라 아무것도 알려 주지 못합니다. 실제 줄 수여야 합니다.
-            StringAssert.Contains("줄 수 로컬 2 / 시트 2", difference);
+            StringAssert.Contains("Line count local 2 / sheet 2", difference);
         }
 
         /// <summary>목록이 길면 뒤를 줄여 로그가 터지지 않게 합니다.</summary>
@@ -171,7 +171,7 @@ namespace CsvPipeline.Tests
             string joined = SheetDiff.Join(items);
 
             StringAssert.Contains("Row0", joined);
-            StringAssert.Contains("외 4개", joined);
+            StringAssert.Contains("and 4 more", joined);
             StringAssert.DoesNotContain("Row11", joined);
         }
 

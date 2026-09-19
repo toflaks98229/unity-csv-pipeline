@@ -9,48 +9,48 @@ using UnityEngine;
 namespace CsvPipeline
 {
     /// <summary>
-    /// 구글 스프레드시트에서 표를 받아 CSV 폴더에 덮어쓰는 <b>에디터 전용</b> 동기화 도구입니다.
-    /// 받기는 <see cref="SheetDownloader"/>, 비교는 <see cref="SheetDiff"/>,
-    /// 사본은 <see cref="SheetSnapshot"/>, 시점은 <see cref="SheetSyncScheduler"/>가 맡고,
-    /// 여기에는 <b>사람에게 무엇을 보여 주고 무엇을 파일로 쓸지</b>만 남깁니다.
+    /// <b>Editor-only</b> sync tool that pulls tables from Google Sheets and overwrites the CSV folder.
+    /// <see cref="SheetDownloader"/> does the pulling, <see cref="SheetDiff"/> the comparing,
+    /// <see cref="SheetSnapshot"/> the snapshots, and <see cref="SheetSyncScheduler"/> the timing,
+    /// so only <b>what to show the user and what to write to disk</b> stays here.
     /// </summary>
     public static class GoogleSheetSync
     {
-        /// <summary>CSV 파일들이 놓이는 프로젝트 폴더입니다.</summary>
+        /// <summary>Project folder that holds the CSV files.</summary>
         private static string CsvRoot => CsvPipelineSettings.Instance.CsvRootFolder;
 
-        /// <summary>동기화 설정 에셋들이 놓이는 폴더입니다. (Editor 폴더라 빌드에 포함되지 않습니다)</summary>
+        /// <summary>Folder that holds the sync settings assets. (An Editor folder, so it stays out of builds.)</summary>
         private static string SettingsRoot => CsvPipelineSettings.Instance.SheetSyncSettingsFolder;
 
-        /// <summary>로그 접두사입니다.</summary>
+        /// <summary>Log prefix.</summary>
         private const string TAG = "[SheetSync]";
 
-        /// <summary>설정 화면으로 안내할 때 쓰는 경로입니다.</summary>
+        /// <summary>Path used when pointing the user at the settings screen.</summary>
         private const string SETTINGS_HINT = "Project Settings ▸ CSV Pipeline";
 
-        /// <summary>동기화가 진행 중인지 여부입니다. (중복 실행 방지)</summary>
+        /// <summary>Whether a sync is in progress. (Guards against a second run.)</summary>
         private static bool _running;
 
-        /// <summary>지금 동기화가 돌고 있는지 여부입니다.</summary>
+        /// <summary>Whether a sync is running right now.</summary>
         public static bool IsRunning => _running;
 
         // ====================================================================================================
         // 메뉴
         // ====================================================================================================
 
-        /// <summary>설정이 갖춰진 모든 CSV를 받아옵니다.</summary>
-        [MenuItem("Tools/CSV Pipeline/Google Sheet에서 받기", false, 40)]
+        /// <summary>Pulls every CSV that has its settings filled in.</summary>
+        [MenuItem("Tools/CSV Pipeline/Pull from Google Sheets", false, 40)]
         public static void PullAllMenu()
         {
             List<GoogleSheetSyncSettings> all = FindAllSettings();
             if (all.Count == 0)
             {
                 EditorUtility.DisplayDialog(
-                    "동기화 설정이 없습니다",
-                    $"설정 에셋이 하나도 없습니다.\n\n{SettingsRoot} 폴더를 확인하거나,\n"
-                    + "메뉴 Tools ▸ CSV Pipeline ▸ Google Sheet 설정 만들기 를 실행하세요.\n\n"
-                    + $"CSV 폴더 위치는 {SETTINGS_HINT} 에서 바꿉니다.",
-                    "확인");
+                    "No sync settings",
+                    $"There is not a single settings asset.\n\nCheck the {SettingsRoot} folder,\n"
+                    + "or run the menu Tools ▸ CSV Pipeline ▸ Create Google Sheet Settings.\n\n"
+                    + $"The CSV folder location is changed in {SETTINGS_HINT}.",
+                    "OK");
                 return;
             }
 
@@ -58,77 +58,78 @@ namespace CsvPipeline
             if (ready.Count == 0)
             {
                 EditorUtility.DisplayDialog(
-                    "받아올 대상이 없습니다",
-                    $"설정 에셋은 {all.Count}개 있지만, 링크가 채워지고 켜져 있는 항목이 없습니다.\n\n"
-                    + $"{SettingsRoot} 안의 에셋에 시트 주소를 붙여넣고 Enabled를 켜 주세요.",
-                    "확인");
+                    "Nothing to pull",
+                    $"There are {all.Count} settings assets, but none of them has a link filled in and is enabled.\n\n"
+                    + $"Paste the sheet address into the assets under {SettingsRoot} and turn Enabled on.",
+                    "OK");
                 return;
             }
 
-            _ = PullManyAsync(ready, interactive: true);
+            CsvAsync.Forget(PullManyAsync(ready, interactive: true), TAG, "sheet pull");
         }
 
         /// <summary>
-        /// 시트와 로컬 CSV의 차이를 조사해 보고만 합니다. <b>파일을 쓰지 않습니다.</b>
+        /// Only inspects and reports the difference between the sheet and the local CSV. <b>Writes no files.</b>
         /// </summary>
-        [MenuItem("Tools/CSV Pipeline/Google Sheet와 비교만", false, 41)]
+        [MenuItem("Tools/CSV Pipeline/Compare with Google Sheets", false, 41)]
         public static void CompareAllMenu()
         {
             var ready = FindAllSettings().FindAll(s => s.enabled && s.IsConfigured);
             if (ready.Count == 0)
             {
-                EditorUtility.DisplayDialog("비교할 대상이 없습니다",
-                    "링크가 채워지고 켜져 있는 설정이 없습니다.", "확인");
+                EditorUtility.DisplayDialog("Nothing to compare",
+                    "No settings have a link filled in and are enabled.", "OK");
                 return;
             }
 
-            _ = CompareAllAsync(ready);
+            CsvAsync.Forget(CompareAllAsync(ready), TAG, "sheet compare");
         }
 
         /// <summary>
-        /// 설정 하나만 시트와 비교해 결과를 콘솔에 보고합니다. <b>파일을 쓰지 않습니다.</b>
+        /// Compares one settings asset against the sheet and reports the result to the console. <b>Writes no files.</b>
         /// </summary>
-        /// <param name="settings">비교할 설정입니다.</param>
+        /// <param name="settings">Settings to compare.</param>
         public static void CompareOne(GoogleSheetSyncSettings settings)
         {
             if (settings == null || !settings.IsConfigured) return;
 
-            _ = CompareAllAsync(new List<GoogleSheetSyncSettings> { settings });
+            CsvAsync.Forget(CompareAllAsync(new List<GoogleSheetSyncSettings> { settings }), TAG, "sheet compare");
         }
 
-        /// <summary>설정 하나만 시트에서 받아옵니다. 내용이 달라졌을 때만 기록합니다.</summary>
-        /// <param name="settings">받아올 설정입니다.</param>
+        /// <summary>Pulls one settings asset from the sheet. Writes only when the content changed.</summary>
+        /// <param name="settings">Settings to pull.</param>
         public static void PullOne(GoogleSheetSyncSettings settings)
         {
             if (settings == null || !settings.IsConfigured) return;
 
-            _ = PullManyAsync(new List<GoogleSheetSyncSettings> { settings }, interactive: true);
+            CsvAsync.Forget(PullManyAsync(new List<GoogleSheetSyncSettings> { settings }, interactive: true),
+                            TAG, "sheet pull");
         }
 
         /// <summary>
-        /// 자동 받기 경로입니다. <b>대화상자를 띄우지 않습니다.</b>
-        /// 확인이 필요한 상황은 건너뛰고 로그만 남깁니다.
+        /// The automatic pull path. <b>It shows no dialogs.</b>
+        /// Anything that would need confirmation is skipped and only logged.
         /// </summary>
-        /// <param name="targets">이번에 받을 설정들입니다.</param>
+        /// <param name="targets">Settings to pull this time.</param>
         public static void PullAutomatically(List<GoogleSheetSyncSettings> targets)
-            => _ = PullManyAsync(targets, interactive: false);
+            => CsvAsync.Forget(PullManyAsync(targets, interactive: false), TAG, "automatic sheet pull");
 
-        /// <summary>프로젝트의 모든 연동 설정입니다. 파일 이름 순입니다.</summary>
-        /// <returns>찾은 설정 에셋 목록입니다.</returns>
+        /// <summary>Every sync settings asset in the project, ordered by file name.</summary>
+        /// <returns>List of settings assets found.</returns>
         public static List<GoogleSheetSyncSettings> FindAll() => FindAllSettings();
 
-        /// <summary>연동 설정의 존재 여부에 맞춰 자동 받기 루프를 다시 겁니다.</summary>
+        /// <summary>Re-arms the automatic pull loop according to whether any sync settings exist.</summary>
         internal static void RefreshAutoPullHook() => SheetSyncScheduler.Refresh();
 
-        /// <summary>설정 에셋 폴더를 프로젝트 창에서 선택합니다.</summary>
+        /// <summary>Selects the settings asset folder in the Project window.</summary>
         public static void SelectSettingsFolderMenu()
         {
             var folder = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(SettingsRoot);
             if (folder == null)
             {
-                EditorUtility.DisplayDialog("폴더가 없습니다",
-                    $"{SettingsRoot} 폴더가 없습니다.\n\n"
-                    + "메뉴 Tools ▸ CSV Pipeline ▸ Google Sheet 설정 만들기 를 먼저 실행하세요.", "확인");
+                EditorUtility.DisplayDialog("Folder not found",
+                    $"There is no {SettingsRoot} folder.\n\n"
+                    + "Run the menu Tools ▸ CSV Pipeline ▸ Create Google Sheet Settings first.", "OK");
                 return;
             }
 
@@ -137,17 +138,17 @@ namespace CsvPipeline
         }
 
         /// <summary>
-        /// 설정 에셋이 없는 CSV마다 설정 에셋을 하나씩 만듭니다. (이미 있는 것은 건드리지 않습니다)
+        /// Creates one settings asset for every CSV that has none. (Existing ones are left alone.)
         /// </summary>
-        [MenuItem("Tools/CSV Pipeline/Google Sheet 설정 만들기", false, 42)]
+        [MenuItem("Tools/CSV Pipeline/Create Google Sheet Settings", false, 42)]
         public static void CreateMissingSettingsMenu()
         {
             string csvRoot = CsvRoot;
             if (!AssetDatabase.IsValidFolder(csvRoot))
             {
-                EditorUtility.DisplayDialog("CSV 폴더가 없습니다",
-                    $"CSV 루트 폴더를 찾지 못했습니다: {csvRoot}\n\n"
-                    + $"{SETTINGS_HINT} 에서 실제 폴더를 지정하십시오.", "확인");
+                EditorUtility.DisplayDialog("CSV folder not found",
+                    $"Could not find the CSV root folder: {csvRoot}\n\n"
+                    + $"Point {SETTINGS_HINT} at the folder you actually use.", "OK");
                 return;
             }
 
@@ -179,7 +180,7 @@ namespace CsvPipeline
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
 
-            Debug.Log($"{TAG} 설정 에셋 {created}개를 만들었습니다. 각 에셋에 시트 주소를 넣고 Enabled를 켜 주세요.");
+            Debug.Log($"{TAG} Created {created} settings assets. Put the sheet address into each one and turn Enabled on.");
             SelectSettingsFolderMenu();
         }
 
@@ -187,14 +188,14 @@ namespace CsvPipeline
         // 받기
         // ====================================================================================================
 
-        /// <summary>한 파일의 처리 결과입니다.</summary>
+        /// <summary>Result of processing one file.</summary>
         private enum PullResult { Changed, Unchanged, Failed }
 
         /// <summary>
-        /// 주어진 설정들을 받아 변경된 파일만 기록하고 재임포트합니다.
+        /// Pulls the given settings, then writes and reimports only the files that changed.
         /// </summary>
-        /// <param name="targets">처리할 설정 목록입니다.</param>
-        /// <param name="interactive">사용자에게 확인 대화상자를 띄워도 되는 경로인지 여부입니다.</param>
+        /// <param name="targets">Settings to process.</param>
+        /// <param name="interactive">Whether this path may show confirmation dialogs to the user.</param>
         private static async Task PullManyAsync(List<GoogleSheetSyncSettings> targets, bool interactive)
         {
             if (_running || targets == null || targets.Count == 0) return;
@@ -213,7 +214,7 @@ namespace CsvPipeline
 
                     if (interactive)
                     {
-                        EditorUtility.DisplayProgressBar("Google Sheet 동기화",
+                        EditorUtility.DisplayProgressBar("Google Sheet Sync",
                             settings.csvFileName, (float)i / Mathf.Max(1, targets.Count));
                     }
 
@@ -233,18 +234,18 @@ namespace CsvPipeline
 
             if (changed.Count > 0) ReimportAll(changed);
 
-            string summary = $"{TAG} 완료 — 갱신 {changed.Count} / 동일 {skipped} / 실패 {failed}";
+            string summary = $"{TAG} Done — updated {changed.Count} / unchanged {skipped} / failed {failed}";
             if (failed > 0) Debug.LogWarning(summary);
             else if (changed.Count > 0) Debug.Log($"{summary}\n  {string.Join("\n  ", changed)}");
             else if (interactive) Debug.Log(summary);
         }
 
         /// <summary>
-        /// 설정 하나가 가리키는 탭을 받아, 내용이 달라졌을 때만 파일에 기록합니다.
+        /// Pulls the tab one settings asset points at, and writes the file only when the content changed.
         /// </summary>
-        /// <param name="settings">처리할 설정입니다.</param>
-        /// <param name="interactive">확인 대화상자를 띄워도 되는 경로인지 여부입니다.</param>
-        /// <returns>처리 결과입니다.</returns>
+        /// <param name="settings">Settings to process.</param>
+        /// <param name="interactive">Whether this path may show confirmation dialogs.</param>
+        /// <returns>Result of the pull.</returns>
         private static async Task<PullResult> PullOneAsync(GoogleSheetSyncSettings settings, bool interactive)
         {
             string csvFileName = settings.csvFileName;
@@ -253,7 +254,7 @@ namespace CsvPipeline
 
             if (!File.Exists(fullPath))
             {
-                Debug.LogWarning($"{TAG} {csvFileName}: 대상 CSV가 프로젝트에 없습니다. ({assetPath})", settings);
+                Debug.LogWarning($"{TAG} {csvFileName}: the target CSV is not in the project. ({assetPath})", settings);
                 return PullResult.Failed;
             }
 
@@ -281,25 +282,41 @@ namespace CsvPipeline
             if (SheetSnapshot.DivergedFromLocal(csvFileName, existing))
             {
                 Debug.LogWarning(
-                    $"{TAG} {csvFileName}: 마지막 동기화 이후 로컬에서 직접 수정된 흔적이 있습니다. "
-                    + "시트 내용으로 덮어씁니다. (수정분은 git에서 되찾을 수 있습니다)", settings);
+                    $"{TAG} {csvFileName}: there are signs of a direct local edit since the last sync. "
+                    + "Overwriting with the sheet content. (You can recover the edit from git.)", settings);
             }
 
-            // BOM 없는 UTF-8로 기록합니다. 파이프라인의 리더가 기대하는 형식입니다.
-            File.WriteAllText(fullPath, incoming, new UTF8Encoding(false));
-            SheetSnapshot.Write(csvFileName, incoming);
+            // 인코딩은 설정을 따릅니다. 기본은 BOM을 붙이는 쪽입니다 — 받아 온 표를 Excel로 열어 보는
+            // 것이 흔한데, BOM이 없으면 그때 한글이 깨져 보입니다. 읽는 쪽은 어느 쪽이든 같습니다.
+            try
+            {
+                File.WriteAllText(fullPath, incoming, CsvPipelineSettings.TableEncoding);
+                SheetSnapshot.Write(csvFileName, incoming);
+            }
+            catch (Exception e) when (e is IOException || e is UnauthorizedAccessException)
+            {
+                // 표를 Excel로 열어 둔 채 받기를 누르면 여기서 막힙니다. 가장 흔한 실패이면서
+                // 가장 조용한 실패였습니다 — 예외가 아무 데도 닿지 않아 '아무 일도 안 일어남'으로 보였습니다.
+                Debug.LogError(
+                    $"{TAG} {csvFileName}: could not write the table — {e.Message}\n"
+                    + "  Check whether Excel or another program is holding this file open. "
+                    + "The pulled content was not written, and the existing table is untouched.", settings);
+                return PullResult.Failed;
+            }
+
             return PullResult.Changed;
         }
 
         /// <summary>
-        /// 헤더가 달라졌을 때 덮어써도 되는지 정합니다.
-        /// 열을 바꾼 것일 수도, <b>엉뚱한 탭을 가리키는 것</b>일 수도 있어 조용히 통과시키지 않습니다.
+        /// Decides whether it is safe to overwrite when the header changed.
+        /// The columns may have been reworked, or the settings may <b>point at the wrong tab</b>,
+        /// so this never passes silently.
         /// </summary>
-        /// <param name="settings">처리 중인 설정입니다.</param>
-        /// <param name="existing">지금 로컬 내용입니다.</param>
-        /// <param name="incoming">시트에서 받은 내용입니다.</param>
-        /// <param name="interactive">대화상자를 띄워도 되는 경로인지 여부입니다.</param>
-        /// <returns>계속 진행해도 되면 true입니다.</returns>
+        /// <param name="settings">Settings being processed.</param>
+        /// <param name="existing">Current local content.</param>
+        /// <param name="incoming">Content pulled from the sheet.</param>
+        /// <param name="interactive">Whether this path may show dialogs.</param>
+        /// <returns>True when it is safe to continue.</returns>
         private static bool ConfirmHeaderChange(GoogleSheetSyncSettings settings,
                                                 string existing, string incoming, bool interactive)
         {
@@ -311,24 +328,24 @@ namespace CsvPipeline
 
             if (!interactive)
             {
-                Debug.LogWarning($"{TAG} {settings.csvFileName}: 헤더가 달라 자동 받기를 건너뜁니다. "
-                               + "메뉴에서 직접 받아 확인하세요.", settings);
+                Debug.LogWarning($"{TAG} {settings.csvFileName}: the headers differ, so the automatic pull is skipped. "
+                               + "Pull it from the menu yourself and check it.", settings);
                 return false;
             }
 
             string message =
-                $"{settings.csvFileName}의 헤더가 다릅니다.\n\n"
-                + $"현재: {localHeader}\n\n"
-                + $"시트: {sheetHeader}\n\n"
-                + $"엉뚱한 탭(gid={settings.Gid})을 가리키고 있을 수 있습니다. 덮어쓸까요?";
+                $"The header of {settings.csvFileName} differs.\n\n"
+                + $"Local: {localHeader}\n\n"
+                + $"Sheet: {sheetHeader}\n\n"
+                + $"The settings may point at the wrong tab (gid={settings.Gid}). Overwrite?";
 
-            return EditorUtility.DisplayDialog("헤더가 다릅니다", message, "덮어쓰기", "건너뛰기");
+            return EditorUtility.DisplayDialog("Headers differ", message, "Overwrite", "Skip");
         }
 
         /// <summary>
-        /// 바뀐 CSV들을 강제 재임포트해 파이프라인을 발화시킵니다.
+        /// Force-reimports the changed CSVs so the pipeline fires.
         /// </summary>
-        /// <param name="fileNames">재임포트할 CSV 파일 이름 목록입니다.</param>
+        /// <param name="fileNames">CSV file names to reimport.</param>
         private static void ReimportAll(List<string> fileNames)
         {
             AssetDatabase.StartAssetEditing();
@@ -353,9 +370,9 @@ namespace CsvPipeline
         // ====================================================================================================
 
         /// <summary>
-        /// 대상들을 시트와 비교해 결과를 콘솔에 보고합니다. 파일은 건드리지 않습니다.
+        /// Compares the targets against the sheet and reports the result to the console. It touches no files.
         /// </summary>
-        /// <param name="targets">비교할 설정 목록입니다.</param>
+        /// <param name="targets">Settings to compare.</param>
         private static async Task CompareAllAsync(List<GoogleSheetSyncSettings> targets)
         {
             if (_running || targets == null || targets.Count == 0) return;
@@ -370,7 +387,7 @@ namespace CsvPipeline
                 {
                     GoogleSheetSyncSettings settings = targets[i];
 
-                    EditorUtility.DisplayProgressBar("Google Sheet 비교",
+                    EditorUtility.DisplayProgressBar("Google Sheet Compare",
                         settings.csvFileName, (float)i / Mathf.Max(1, targets.Count));
 
                     switch (await CompareOneAsync(settings, report))
@@ -390,15 +407,15 @@ namespace CsvPipeline
             EmitCompareReport(report, same, different, failed);
         }
 
-        /// <summary>한 표의 비교 결과입니다.</summary>
+        /// <summary>Comparison result for one table.</summary>
         private enum CompareResult { Same, Different, Failed }
 
         /// <summary>
-        /// 설정 하나를 시트와 비교하고, 알릴 내용을 보고문에 덧붙입니다.
+        /// Compares one settings asset against the sheet and appends what to tell the user to the report.
         /// </summary>
-        /// <param name="settings">비교할 설정입니다.</param>
-        /// <param name="report">결과를 덧붙일 보고문입니다.</param>
-        /// <returns>비교 결과입니다.</returns>
+        /// <param name="settings">Settings to compare.</param>
+        /// <param name="report">Report to append the result to.</param>
+        /// <returns>Comparison result.</returns>
         private static async Task<CompareResult> CompareOneAsync(GoogleSheetSyncSettings settings, StringBuilder report)
         {
             string csvFileName = settings.csvFileName;
@@ -406,49 +423,49 @@ namespace CsvPipeline
 
             if (!File.Exists(fullPath))
             {
-                report.AppendLine($"  [실패] {csvFileName} — 로컬에 파일이 없습니다");
+                report.AppendLine($"  [failed] {csvFileName} — the file does not exist locally");
                 return CompareResult.Failed;
             }
 
             SheetFetch fetch = await SheetDownloader.FetchAsync(settings.ExportUrl);
             if (!fetch.Ok)
             {
-                report.AppendLine($"  [실패] {csvFileName} — {fetch.Error}");
+                report.AppendLine($"  [failed] {csvFileName} — {fetch.Error}");
                 return CompareResult.Failed;
             }
 
             string difference = SheetDiff.Describe(SheetDiff.Normalize(File.ReadAllText(fullPath)), fetch.Text);
             if (difference == null) return CompareResult.Same;
 
-            report.AppendLine($"  [다름] {csvFileName}");
+            report.AppendLine($"  [different] {csvFileName}");
             report.Append(difference);
             return CompareResult.Different;
         }
 
-        /// <summary>비교 결과를 콘솔과 대화상자로 알립니다.</summary>
-        /// <param name="report">모아 둔 상세 보고문입니다.</param>
-        /// <param name="same">동일한 표의 수입니다.</param>
-        /// <param name="different">다른 표의 수입니다.</param>
-        /// <param name="failed">비교하지 못한 표의 수입니다.</param>
+        /// <summary>Reports the comparison result to the console and a dialog.</summary>
+        /// <param name="report">Detailed report collected so far.</param>
+        /// <param name="same">Number of tables that match.</param>
+        /// <param name="different">Number of tables that differ.</param>
+        /// <param name="failed">Number of tables that could not be compared.</param>
         private static void EmitCompareReport(StringBuilder report, int same, int different, int failed)
         {
-            string headline = $"{TAG} 비교 결과 — 동일 {same} / 다름 {different} / 실패 {failed}";
+            string headline = $"{TAG} Compare result — same {same} / different {different} / failed {failed}";
 
             if (different == 0 && failed == 0)
             {
-                Debug.Log($"{headline}\n  모든 표가 시트와 일치합니다. 받아도 잃을 것이 없습니다.");
+                Debug.Log($"{headline}\n  Every table matches its sheet. A pull would lose nothing.");
             }
             else
             {
                 Debug.LogWarning($"{headline}\n{report}");
             }
 
-            EditorUtility.DisplayDialog("Google Sheet 비교",
-                $"동일 {same} / 다름 {different} / 실패 {failed}\n\n"
+            EditorUtility.DisplayDialog("Google Sheet Compare",
+                $"Same {same} / different {different} / failed {failed}\n\n"
                 + (different + failed > 0
-                    ? "자세한 내용은 콘솔을 보세요.\n\n다름으로 나온 표는 받으면 로컬 내용이 시트 내용으로 바뀝니다."
-                    : "모든 표가 시트와 일치합니다."),
-                "확인");
+                    ? "See the console for the details.\n\nPulling a table listed as different replaces the local content with the sheet content."
+                    : "Every table matches its sheet."),
+                "OK");
         }
 
         // ====================================================================================================
@@ -456,18 +473,18 @@ namespace CsvPipeline
         // ====================================================================================================
 
         /// <summary>
-        /// 편집기가 만든 임시 파일인지 판별합니다.
+        /// Tells whether the file is a temporary file left by an editor program.
         /// </summary>
-        /// <param name="fileName">판별할 파일 이름입니다.</param>
-        /// <returns>임시 파일이면 true입니다.</returns>
+        /// <param name="fileName">File name to test.</param>
+        /// <returns>True when it is a temporary file.</returns>
         private static bool IsTempFile(string fileName)
         {
             return fileName.StartsWith("~$", StringComparison.Ordinal)
                 || fileName.StartsWith(".", StringComparison.Ordinal);
         }
 
-        /// <summary>프로젝트의 모든 동기화 설정 에셋을 파일 이름 순으로 반환합니다.</summary>
-        /// <returns>찾은 설정 에셋 목록입니다.</returns>
+        /// <summary>Returns every sync settings asset in the project, ordered by file name.</summary>
+        /// <returns>List of settings assets found.</returns>
         private static List<GoogleSheetSyncSettings> FindAllSettings()
         {
             var list = new List<GoogleSheetSyncSettings>();

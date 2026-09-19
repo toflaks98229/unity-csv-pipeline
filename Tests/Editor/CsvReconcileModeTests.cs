@@ -84,7 +84,7 @@ namespace CsvPipeline.Tests
             _assets.Add<ByPathData>(stray);
             _assets.Referenced.Add(stray);
 
-            LogAssert.Expect(LogType.Warning, new Regex("참조 중이라 보존"));
+            LogAssert.Expect(LogType.Warning, new Regex("still referenced, so it is preserved"));
 
             CsvImportReport report = Bake("A,첫\n");
 

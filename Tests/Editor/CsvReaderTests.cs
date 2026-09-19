@@ -55,13 +55,27 @@ namespace CsvPipeline.Tests
             Assert.AreEqual(4, table.Rows[1].LineNumber, "여러 줄 필드가 끝난 다음 줄이어야 합니다.");
         }
 
-        /// <summary>첫 열이 빈 줄은 데이터 행으로 세지 않습니다.</summary>
+        /// <summary>셀이 하나도 없는 줄은 데이터 행으로 세지 않습니다.</summary>
         [Test]
-        public void 첫_열이_빈_줄은_건너뛴다()
+        public void 모든_셀이_빈_줄은_건너뛴다()
         {
             CsvTable table = CsvReader.ReadTable("Id,Name\nA,가\n,\nB,나\n");
 
             Assert.AreEqual(2, table.Count);
+        }
+
+        /// <summary>
+        /// 앞 열이 비어 있어도 뒤에 값이 있으면 행입니다.
+        /// 식별자가 첫 열이 아닌 표에서 메모 칸이 빈 행이 말없이 사라지던 자리입니다.
+        /// </summary>
+        [Test]
+        public void 앞_열이_비어도_값이_있으면_행이다()
+        {
+            CsvTable table = CsvReader.ReadTable("Note,Id,Name\n초안,A,가\n,B,나\n");
+
+            Assert.AreEqual(2, table.Count, "앞 열이 빈 행도 읽어야 합니다.");
+            Assert.AreEqual("B", table.Rows[1].GetString("Id"));
+            Assert.AreEqual("나", table.Rows[1].GetString("Name"));
         }
 
         /// <summary>탭 구분 표를 읽습니다.</summary>
@@ -111,6 +125,52 @@ namespace CsvPipeline.Tests
             Assert.AreEqual(1, rows.Count);
             Assert.IsInstanceOf<int>(rows[0]["MaxSpeed"], "boxed int가 보존돼야 합니다.");
             Assert.IsFalse(rows[0].ContainsKey("maxSpeed"), "레거시 경로는 대소문자를 구분합니다.");
+        }
+
+        /// <summary>
+        /// 숫자로 보이는 문자열 셀이 값을 잃지 않습니다.
+        /// <para>
+        /// 파서가 값을 보고 타입을 정하던 동안, 이 셀들은 <b>되돌릴 수 없게</b> 손상됐습니다.
+        /// 경고도 없었고, 내보내기와 엮이면 스스로 번졌습니다 — 에셋의 <c>007</c>을 표로 뽑고
+        /// 다시 구우면 에셋이 <c>7</c>이 됐습니다.
+        /// </para>
+        /// </summary>
+        [TestCase("007", TestName = "앞의 0")]
+        [TestCase("00123456789", TestName = "사번·바코드")]
+        [TestCase("1.10", TestName = "소수점 뒤 0")]
+        [TestCase("1e3", TestName = "지수 표기")]
+        [TestCase("+5", TestName = "부호")]
+        [TestCase("99999999999999999999", TestName = "20자리")]
+        [TestCase("1.0.0", TestName = "판 번호")]
+        public void 숫자로_보이는_문자열은_원문_그대로다(string cell)
+        {
+            CsvTable table = CsvReader.ReadTable($"Id,Code\nA,{cell}\n");
+
+            Assert.AreEqual(cell, table.Rows[0].GetString("Code"));
+        }
+
+        /// <summary>
+        /// 원문을 그대로 들고 있어도 숫자 읽기는 그대로 됩니다.
+        /// 타입은 <b>대상 필드</b>가 정한다는 규칙이 지켜지는 자리입니다 — 같은 <c>30</c>이
+        /// 정수로도 실수로도 읽힙니다.
+        /// </summary>
+        [Test]
+        public void 원문을_들고_있어도_숫자로_읽힌다()
+        {
+            CsvRow row = CsvReader.ReadTable("Id,Speed\nA,30\n").Rows[0];
+
+            Assert.AreEqual(30, row.GetInt("Speed"));
+            Assert.AreEqual(30f, row.GetFloat("Speed"), 0.0001f);
+            Assert.AreEqual("30", row.GetString("Speed"));
+        }
+
+        /// <summary>셀의 앞뒤 공백은 그대로 떼어 냅니다. 눈에 보이지 않는 차이로 값이 갈리면 안 됩니다.</summary>
+        [Test]
+        public void 셀의_앞뒤_공백은_떼어_낸다()
+        {
+            CsvRow row = CsvReader.ReadTable("Id,Name\nA,  검  \n").Rows[0];
+
+            Assert.AreEqual("검", row.GetString("Name"));
         }
 
         /// <summary>내용이 없으면 빈 표입니다.</summary>
