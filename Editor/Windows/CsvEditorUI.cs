@@ -74,6 +74,12 @@ namespace CsvPipeline
         /// <summary>
         /// 내장 아이콘을 가져옵니다. <b>없으면 null입니다.</b>
         /// 아이콘 이름은 유니티 판마다 달라질 수 있어, 못 찾으면 부르는 쪽이 글자로 물러섭니다.
+        /// <b>물어보는 동안에는 로그를 꺼 둡니다.</b>
+        /// <c>EditorGUIUtility.IconContent</c>는 없는 이름에 예외가 아니라 <c>Debug.LogError</c>를
+        /// 남기므로 <c>catch</c>로는 막히지 않고, 화면은 글자로 멀쩡히 물러서면서 오류만 새어 나갑니다.
+        /// 로그를 꺼도 있고 없고는 <c>image</c>가 null인지로 그대로 가려집니다.
+        /// 미리 걸러내는 쪽(<c>EditorGUIUtility.FindTexture</c>)은 쓸 수 없습니다 —
+        /// 실제로 있는 아이콘에도 null을 돌려줍니다.
         /// </summary>
         /// <param name="name">내장 아이콘 이름입니다.</param>
         /// <returns>아이콘이거나, 없으면 null입니다.</returns>
@@ -82,6 +88,8 @@ namespace CsvPipeline
             if (IconCache.TryGetValue(name, out GUIContent cached)) return cached;
 
             GUIContent found = null;
+            bool logging = Debug.unityLogger.logEnabled;
+            Debug.unityLogger.logEnabled = false;
             try
             {
                 GUIContent content = EditorGUIUtility.IconContent(name);
@@ -90,6 +98,10 @@ namespace CsvPipeline
             catch (System.Exception)
             {
                 // 이 판에 없는 아이콘입니다. 글자로 물러섭니다.
+            }
+            finally
+            {
+                Debug.unityLogger.logEnabled = logging;
             }
 
             IconCache[name] = found;
